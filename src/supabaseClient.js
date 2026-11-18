@@ -5,14 +5,46 @@ const activeChannels = new WeakMap();
 
 const getAccessToken = () => sessionStorage.getItem('datsan_access_token');
 
+export async function refreshAuthSession() {
+  const refreshToken = sessionStorage.getItem('datsan_refresh_token');
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(`${apiUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.accessToken) {
+      sessionStorage.setItem('datsan_access_token', data.accessToken);
+      if (data.refreshToken) sessionStorage.setItem('datsan_refresh_token', data.refreshToken);
+      return data;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 async function apiRequest(path, options = {}) {
-  const token = getAccessToken();
+  let token = getAccessToken();
   const headers = {
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
-  const response = await fetch(`${apiUrl}${path}`, { ...options, headers, signal: AbortSignal.timeout(15000) });
+  let response = await fetch(`${apiUrl}${path}`, { ...options, headers, signal: AbortSignal.timeout(15000) });
+
+  // Tự động làm mới access token nếu gặp lỗi 401 hết hạn phiên
+  if (response.status === 401 && path !== '/api/auth/refresh' && sessionStorage.getItem('datsan_refresh_token')) {
+    const refreshed = await refreshAuthSession();
+    if (refreshed?.accessToken) {
+      headers.Authorization = `Bearer ${refreshed.accessToken}`;
+      response = await fetch(`${apiUrl}${path}`, { ...options, headers, signal: AbortSignal.timeout(15000) });
+    }
+  }
+
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'API request failed');
   return result;
