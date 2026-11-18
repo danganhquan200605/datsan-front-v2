@@ -4,9 +4,9 @@ import {
   MapPin, Calendar, Clock, ArrowLeft, ShieldCheck, Zap, Star, 
   Check, Phone, CheckCircle, Navigation, Coffee, Award, ChevronRight, Video, Sparkles, Car, Wifi, Info,
   Tv, Heart, ExternalLink, Shield, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, User, Users,
-  Search, Bell, LogIn, LogOut, Building2, PlusCircle, LayoutDashboard
+  Search, Bell, LogIn, LogOut, Building2, PlusCircle, LayoutDashboard, X
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp } from '../supabaseClient';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -42,6 +42,14 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateValue());
   const [selectedSlots, setSelectedSlots] = useState([]);
   
+  // Login Modal States
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [normalizedPhone, setNormalizedPhone] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [loginStep, setLoginStep] = useState(1);
+  const [loginError, setLoginError] = useState('');
+
   // States các dịch vụ cộng thêm
   const [services, setServices] = useState({
     water: false,
@@ -50,6 +58,54 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
     shuttlecock: false,
     racketTennis: false
   });
+
+  const resetAuthForm = () => {
+    setLoginStep(1);
+    setPhoneNumber('');
+    setNormalizedPhone('');
+    setOtpCode('');
+    setLoginError('');
+  };
+
+  const handleSendOtp = async (event) => {
+    event.preventDefault();
+    const digits = phoneNumber.replace(/\D/g, '');
+    const e164Phone = digits.startsWith('0') ? `+84${digits.slice(1)}` : digits.startsWith('84') ? `+${digits}` : `+84${digits}`;
+    if (!/^\+84\d{9}$/.test(e164Phone)) {
+      setLoginError('Nhập số điện thoại Việt Nam gồm 10 chữ số.');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      setLoginError('');
+      await requestPhoneOtp(e164Phone);
+      setNormalizedPhone(e164Phone);
+      setLoginStep(2);
+    } catch (error) {
+      setLoginError(error.message || 'Không gửi được mã OTP.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVerifyOtp = async (event) => {
+    event.preventDefault();
+    try {
+      setIsSubmitting(true);
+      setLoginError('');
+      const session = await verifyPhoneOtp(normalizedPhone, otpCode.trim());
+      sessionStorage.setItem('datsan_access_token', session.accessToken);
+      sessionStorage.setItem('datsan_refresh_token', session.refreshToken);
+      sessionStorage.setItem('datsan_user', JSON.stringify(session.user));
+      if (typeof setUser === 'function') setUser(session.user);
+      setShowLoginModal(false);
+      resetAuthForm();
+    } catch (error) {
+      setLoginError(error.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -224,7 +280,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   const handleConfirmBooking = async () => {
     if (selectedSlots.length === 0) return;
     if (!currentUser) {
-      navigate('/login?returnTo=booking');
+      setShowLoginModal(true);
       return;
     }
     try {
@@ -407,7 +463,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
               </div>
             ) : (
               <button 
-                onClick={() => navigate('/login')} 
+                onClick={() => setShowLoginModal(true)} 
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm transition"
               >
                 <LogIn className="w-4 h-4" /> Đăng nhập
@@ -822,9 +878,9 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     </div>
                     
                     <button 
-                      disabled={isSubmitting || !currentUser}
-                      onClick={handleConfirmBooking}
-                      className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-lg shadow-amber-500/30 transition flex items-center justify-center gap-2"
+                      disabled={isSubmitting}
+                      onClick={currentUser ? handleConfirmBooking : () => setShowLoginModal(true)}
+                      className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-lg shadow-amber-500/30 transition flex items-center justify-center gap-2 cursor-pointer"
                     >
                       {isSubmitting ? 'ĐANG LƯU CSDL...' : currentUser ? 'XÁC NHẬN ĐẶT SÂN & GIỮ CHỖ' : 'ĐĂNG NHẬP ĐỂ ĐẶT SÂN'} <ChevronRight className="w-4 h-4" />
                     </button>
@@ -840,6 +896,83 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
           </div>
         </div>
       </main>
+
+      {/* MODAL ĐĂNG NHẬP / XÁC THỰC OTP */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl relative">
+            <button 
+              onClick={() => { setShowLoginModal(false); resetAuthForm(); }}
+              className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-full transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <Phone className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Đăng Nhập DatSanOnline</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {loginStep === 1 ? 'Nhập số điện thoại để nhận mã OTP' : `Mã OTP đã gửi tới ${normalizedPhone}`}
+              </p>
+            </div>
+
+            {loginStep === 1 ? (
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                <label className="block text-xs font-bold text-slate-700">Số điện thoại
+                  <input 
+                    type="tel" 
+                    value={phoneNumber} 
+                    onChange={(event) => setPhoneNumber(event.target.value)} 
+                    placeholder="Ví dụ: 0905123456" 
+                    className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold" 
+                    required 
+                  />
+                </label>
+                {loginError && <p role="alert" className="text-xs text-rose-600 font-medium">{loginError}</p>}
+                <button 
+                  disabled={isSubmitting} 
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl disabled:opacity-50 transition shadow-md"
+                >
+                  {isSubmitting ? 'Đang gửi...' : 'Gửi mã OTP'}
+                </button>
+                <div className="p-3 bg-slate-50 rounded-xl text-[11px] text-slate-500 border border-slate-100">
+                  <span className="font-bold text-slate-700">Số test:</span> 0905123456 (Khách) hoặc 0905888999 (Chủ sân) • OTP: <b>123456</b>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <label className="block text-xs font-bold text-slate-700">Mã OTP
+                  <input 
+                    type="text" 
+                    inputMode="numeric" 
+                    maxLength={8} 
+                    value={otpCode} 
+                    onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} 
+                    placeholder="Nhập 123456" 
+                    className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-lg font-black focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                    required 
+                  />
+                </label>
+                {loginError && <p role="alert" className="text-xs text-rose-600 font-medium">{loginError}</p>}
+                <button 
+                  disabled={isSubmitting} 
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl disabled:opacity-50 transition shadow-md"
+                >
+                  {isSubmitting ? 'Đang xác minh...' : 'Xác nhận đăng nhập'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => { setLoginStep(1); setLoginError(''); }} 
+                  className="w-full text-xs text-emerald-700 font-semibold hover:underline"
+                >
+                  Đổi số điện thoại
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

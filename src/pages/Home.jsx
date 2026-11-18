@@ -6,7 +6,6 @@ import {
   Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X
 } from 'lucide-react';
 import { requestPhoneOtp, supabase, verifyPhoneOtp } from '../supabaseClient';
-import FieldDetail from './FieldDetail';
 import Header from '../components/Header';
 
 const DEFAULT_IMAGES = [
@@ -46,10 +45,10 @@ export default function Home() {
 
   const [loaiSanList, setLoaiSanList] = useState([]);
   const [timeSlotList, setTimeSlotList] = useState([]);
+  const [allKhungGio, setAllKhungGio] = useState([]);
   const [sanList, setSanList] = useState([]);
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDetailSanId, setSelectedDetailSanId] = useState(null);
   const [selectedMaLoaiSan, setSelectedMaLoaiSan] = useState(0); 
   const [selectedQuan, setSelectedQuan] = useState(''); 
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateValue());
@@ -98,13 +97,22 @@ export default function Home() {
       const sanData = sanResult.data || [];
       const slotData = slotResult.data || [];
       setLoaiSanList(lsData);
-      setTimeSlotList(slotData.map((slot) => {
-        const id = Number(slot.makhunggio ?? slot.MaKhungGio);
+      setAllKhungGio(slotData);
+
+      const uniqueSlots = [];
+      const seenRanges = new Set();
+      slotData.forEach((slot) => {
         const start = String(slot.giobatdau ?? slot.GioBatDau ?? '').slice(0, 5);
         const end = String(slot.gioketthuc ?? slot.GioKetThuc ?? '').slice(0, 5);
-        const hour = Number(start.slice(0, 2));
-        return { id, start, end, label: `${start} - ${end}`, isGold: hour >= 17 && hour <= 20 };
-      }).filter((slot) => slot.id && slot.start && slot.end));
+        const rangeKey = `${start}-${end}`;
+        if (start && end && !seenRanges.has(rangeKey)) {
+          seenRanges.add(rangeKey);
+          const hour = Number(start.slice(0, 2));
+          uniqueSlots.push({ id: rangeKey, start, end, label: `${start} - ${end}`, isGold: hour >= 17 && hour <= 20 });
+        }
+      });
+      uniqueSlots.sort((a, b) => a.start.localeCompare(b.start));
+      setTimeSlotList(uniqueSlots);
       setBookedSlots(bookingResult.data || []);
       
       if (sanData) {
@@ -171,8 +179,13 @@ export default function Home() {
     const matchSearch = !searchTerm || 
       san.TenSan.toLowerCase().includes(searchTerm.toLowerCase()) ||
       san.ViTri.DiaChi.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchTimeSlot = selectedTimeSlot === 'ALL' || 
-      getSlotStatus(san.MaSan, Number(selectedTimeSlot)) === 'TRONG';
+    const matchTimeSlot = selectedTimeSlot === 'ALL' || (() => {
+      const vSlot = allKhungGio.find((kg) => 
+        Number(kg.masan || kg.MaSan) === Number(san.MaSan) &&
+        `${String(kg.giobatdau || kg.GioBatDau).slice(0, 5)}-${String(kg.gioketthuc || kg.GioKetThuc).slice(0, 5)}` === selectedTimeSlot
+      );
+      return vSlot ? getSlotStatus(san.MaSan, vSlot.makhunggio || vSlot.MaKhungGio) === 'TRONG' : false;
+    })();
     return matchLoaiSan && matchQuan && matchSearch && matchTimeSlot;
   });
 
@@ -263,14 +276,6 @@ export default function Home() {
     }
   };
 
-  if (selectedDetailSanId !== null) {
-    return (
-      <FieldDetail 
-        sanId={selectedDetailSanId} 
-        onBack={() => setSelectedDetailSanId(null)} 
-      />
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased">
@@ -423,15 +428,21 @@ export default function Home() {
                       <td className="py-4 px-4">
                         <div 
                           className="font-extrabold text-sm text-slate-900 cursor-pointer hover:text-emerald-600 transition"
-                          onClick={() => setSelectedDetailSanId(san.MaSan)}
+                          onClick={() => navigate(`/field/${san.MaSan}`)}
                         >
                           {san.TenSan}
                         </div>
                         <div className="text-[11px] text-slate-400">📍 {san.ViTri.DiaChi}, Q. {san.ViTri.Quan}</div>
                       </td>
                       {timeSlotList.map((slot) => {
-                        const status = getSlotStatus(san.MaSan, slot.id);
-                        const isAvailable = status === 'TRONG';
+                        const vSlot = allKhungGio.find((kg) => 
+                          Number(kg.masan || kg.MaSan) === Number(san.MaSan) &&
+                          String(kg.giobatdau || kg.GioBatDau).slice(0, 5) === slot.start &&
+                          String(kg.gioketthuc || kg.GioKetThuc).slice(0, 5) === slot.end
+                        );
+                        const slotId = vSlot ? Number(vSlot.makhunggio || vSlot.MaKhungGio) : null;
+                        const status = slotId ? getSlotStatus(san.MaSan, slotId) : 'DADAT';
+                        const isAvailable = Boolean(slotId && status === 'TRONG');
                         let btnClass = 'bg-slate-100 text-slate-400 cursor-not-allowed';
                         let labelText = 'Đã cọc';
                         if (isAvailable) {
@@ -447,7 +458,7 @@ export default function Home() {
                           <td key={slot.id} className="py-4 px-2 text-center">
                             <button
                               disabled={!isAvailable}
-                              onClick={() => handleQuickBook(san, slot)}
+                              onClick={() => vSlot && handleQuickBook(san, { ...slot, id: slotId })}
                               className={`w-full py-2.5 rounded-xl text-[11px] transition ${btnClass}`}
                             >
                               <div>{slot.start} - {slot.end}</div>
@@ -472,7 +483,7 @@ export default function Home() {
             <div key={san.MaSan} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col group">
               <div 
                 className="relative h-48 bg-slate-100 overflow-hidden cursor-pointer"
-                onClick={() => setSelectedDetailSanId(san.MaSan)}
+                onClick={() => navigate(`/field/${san.MaSan}`)}
               >
                 <img 
                   src={san.Image} 
@@ -484,7 +495,7 @@ export default function Home() {
               <div className="p-5 flex-1 flex flex-col justify-between">
                 <div>
                   <h3 
-                    onClick={() => setSelectedDetailSanId(san.MaSan)}
+                    onClick={() => navigate(`/field/${san.MaSan}`)}
                     className="font-extrabold text-base text-slate-900 group-hover:text-emerald-600 transition mb-1 cursor-pointer"
                   >
                     {san.TenSan}
@@ -502,8 +513,7 @@ export default function Home() {
                     </span>
                   </div>
                   <button 
-                    onClick={() => timeSlotList[0] && handleQuickBook(san, timeSlotList[0])}
-                    disabled={!timeSlotList.length}
+                    onClick={() => navigate(`/field/${san.MaSan}`)}
                     className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
                   >
                     Đặt Ngay
