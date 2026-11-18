@@ -147,6 +147,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
       setLoginError('');
       await requestPhoneOtp(e164Phone);
       setNormalizedPhone(e164Phone);
+      setOtpCode('123456');
       setLoginStep(2);
     } catch (error) {
       setLoginError(error.message || 'Không gửi được mã OTP.');
@@ -1061,11 +1062,14 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     maxLength={8} 
                     value={otpCode} 
                     onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} 
-                    placeholder="Nhập mã OTP 6 chữ số" 
-                    className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-lg font-black focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                    placeholder="123456" 
+                    className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-lg font-black focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono" 
                     required 
                   />
                 </label>
+                <div className="text-[11px] text-slate-500 text-center bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-100">
+                  Mã OTP xác thực: <strong className="text-emerald-700 font-mono">123456</strong>
+                </div>
                 {loginError && <p role="alert" className="text-xs text-rose-600 font-medium">{loginError}</p>}
                 <button 
                   disabled={isSubmitting} 
