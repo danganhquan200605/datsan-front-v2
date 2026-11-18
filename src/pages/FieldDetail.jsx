@@ -8,6 +8,21 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
+const getLocalDateValue = (date = new Date()) => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+};
+
+const getSlotDurationHours = (start, end) => {
+  const toMinutes = (value) => {
+    const [hours, minutes] = String(value).split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  let minutes = toMinutes(end) - toMinutes(start);
+  if (minutes <= 0) minutes += 24 * 60;
+  return minutes / 60;
+};
+
 export default function FieldDetail({ sanId: propSanId, onBack, user, setUser }) {
   const navigate = useNavigate();
   const { id: urlSanId } = useParams();
@@ -16,12 +31,15 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
   const dropdownRef = useRef(null);
   const [sanInfo, setSanInfo] = useState(null);
+  const [timeSlotList, setTimeSlotList] = useState([]);
+  const [pageError, setPageError] = useState('');
+  const [availabilityError, setAvailabilityError] = useState('');
   const [bookedSlotsFromDB, setBookedSlotsFromDB] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateValue());
   const [selectedSlots, setSelectedSlots] = useState([]);
   
   // States các dịch vụ cộng thêm
@@ -43,47 +61,33 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const MASTER_TIME_SLOTS = Array.from({ length: 17 }, (_, i) => {
-    const startHour = i + 6;
-    const endHour = startHour + 1;
-    const startStr = `${startHour.toString().padStart(2, '0')}:00`;
-    const endStr = `${endHour.toString().padStart(2, '0')}:00`;
-    let shift = 'morning';
-    let basePrice = 200000;
-    let isGold = false;
-    if (startHour >= 12 && startHour < 16) {
-      shift = 'afternoon';
-      basePrice = 250000;
-    } else if (startHour >= 16) {
-      shift = 'evening';
-      basePrice = startHour >= 17 && startHour <= 20 ? 380000 : 320000;
-      if (startHour >= 17 && startHour <= 20) isGold = true;
-    }
-    return { 
-      id: i + 1, 
-      start: startStr, 
-      end: endStr, 
-      basePrice, 
-      shift, 
-      isGold,
-      label: `${startStr} - ${endStr}` 
-    };
-  });
-
   useEffect(() => {
     if (currentSanId) sessionStorage.setItem('activeSanId', currentSanId);
     
     async function loadSanBaseInfo() {
       try {
         setInitialLoading(true);
-        const { data: sanData } = await supabase
-          .from('san')
+        const [sanResult, vtResult, lsResult, slotResult] = await Promise.all([
+          supabase.from('san')
           .select('*')
           .eq('masan', currentSanId)
-          .single();
-          
-        const { data: vtData } = await supabase.from('vitri').select('*');
-        const { data: lsData } = await supabase.from('loaisan').select('*');
+          .single(),
+          supabase.from('vitri').select('*'),
+          supabase.from('loaisan').select('*'),
+          supabase.from('khunggio').select('*').order('makhunggio')
+        ]);
+        const failedResult = [sanResult, vtResult, lsResult, slotResult].find((result) => result.error);
+        if (failedResult) throw failedResult.error;
+        const sanData = sanResult.data;
+        const vtData = vtResult.data || [];
+        const lsData = lsResult.data || [];
+        setTimeSlotList((slotResult.data || []).map((slot) => {
+          const id = Number(slot.makhunggio ?? slot.MaKhungGio);
+          const start = String(slot.giobatdau ?? slot.GioBatDau ?? '').slice(0, 5);
+          const end = String(slot.gioketthuc ?? slot.GioKetThuc ?? '').slice(0, 5);
+          const hour = Number(start.slice(0, 2));
+          return { id, start, end, isGold: hour >= 17 && hour <= 20, label: `${start} - ${end}` };
+        }).filter((slot) => slot.id && slot.start && slot.end));
 
         if (sanData) {
           const vt = vtData?.find((v) => Number(v.mavitri || v.MaViTri) === Number(sanData.mavitri || sanData.MaViTri)) || {};
@@ -105,9 +109,12 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
             TotalReviews: 148,
             Image: sanData.hinhanh || sanData.HinhAnh || 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=1200&q=80'
           });
+        } else {
+          setPageError('Không tìm thấy sân này. Vui lòng quay lại danh sách sân.');
         }
       } catch (err) {
         console.error('Lỗi tải thông tin sân:', err);
+        setPageError('Không tải được thông tin sân. Vui lòng thử tải lại trang.');
       } finally {
         setInitialLoading(false);
       }
@@ -117,20 +124,18 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
   const fetchBookedSlots = async () => {
     try {
-      const { data: datSanData } = await supabase
-        .from('datsan')
-        .select('madatsan, masan, ngaysudung, trangthai, datsan_khunggio(makhunggio)')
-        .eq('masan', currentSanId)
-        .eq('ngaysudung', selectedDate);
+      const { data: datSanData, error } = await supabase.availability(selectedDate, currentSanId);
+      if (error) throw error;
       setBookedSlotsFromDB(datSanData || []);
+      setAvailabilityError('');
     } catch (err) {
       console.error('Lỗi tải lịch cọc:', err);
+      setAvailabilityError('Không tải được tình trạng khung giờ. Vui lòng thử lại.');
     }
   };
 
   useEffect(() => {
     fetchBookedSlots();
-    setSelectedSlots([]);
     const channel = supabase
       .channel('detail-realtime-sub')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'datsan' }, () => fetchBookedSlots())
@@ -140,14 +145,20 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
     };
   }, [currentSanId, selectedDate]);
 
+  const handleSelectDate = (date) => {
+    setSelectedDate(date);
+    setSelectedSlots([]);
+  };
+
   const getCalculatedSlots = () => {
-    return MASTER_TIME_SLOTS.map((slot) => {
+    return timeSlotList.map((slot) => {
       const isBookedInDB = bookedSlotsFromDB.some(
-        (b) => b.datsan_khunggio?.some((k) => k.makhunggio === slot.id) && b.trangthai !== 'DAHUY'
+        (b) => Number(b.makhunggio) === Number(slot.id)
+          && !['DAHUY', 'DA_HUY', 'HUY'].includes(String(b.trangthai || '').toUpperCase())
       );
       return {
         ...slot,
-        price: slot.basePrice,
+        price: Math.round(Number(sanInfo?.GiaSan || 0) * getSlotDurationHours(slot.start, slot.end)),
         isBooked: isBookedInDB,
         subText: isBookedInDB ? 'Đã có đội đặt qua hệ thống' : 'Sân mới vừa trống'
       };
@@ -174,7 +185,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   const isPickleball = loaiSanLower.includes('pickleball') || loaiSanLower.includes('pick');
 
   // Xác định số lượng áo bib theo từng loại sân bóng đá (Chỉ cấp cho 1 đội)
-  let bibCountText = "1 bộ áo bib";
+  let bibCountText;
   if (loaiSanLower.includes('sân 11')) {
     bibCountText = "1 bộ (11 áo)";
   } else if (loaiSanLower.includes('sân 7')) {
@@ -185,7 +196,9 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
   // TÍNH TIỀN THUÊ SÂN VÀ CÁC DỊCH VỤ DỰA THEO SỐ GIỜ ĐÃ CHỌN
   const totalPitchPrice = selectedSlots.reduce((sum, item) => sum + item.price, 0);
-  const totalHours = selectedSlots.length > 0 ? selectedSlots.length : 1;
+  const totalHours = selectedSlots.length > 0
+    ? selectedSlots.reduce((sum, slot) => sum + getSlotDurationHours(slot.start, slot.end), 0)
+    : 1;
 
   // Giá nước uống: Bóng đá & Pickleball = 150k (12 chai); Cầu lông & Tennis = 90k (6 chai)
   const waterPrice = (isFootball || isPickleball) ? 150000 : 90000;
@@ -210,28 +223,19 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
   const handleConfirmBooking = async () => {
     if (selectedSlots.length === 0) return;
-    const localUser = currentUser;
-    const maKH = localUser ? (localUser.MaNguoiDung || localUser.manguoidung) : 4; 
+    if (!currentUser) {
+      navigate('/login?returnTo=booking');
+      return;
+    }
     try {
       setIsSubmitting(true);
-      const { data: newBooking, error: bErr } = await supabase.from('datsan').insert([
-        {
-          makhachhang: maKH,
-          masan: sanInfo.MaSan,
-          ngaysudung: selectedDate,
-          tongtien: totalPrice,
-          trangthai: 'CHOXACNHAN'
-        }
-      ]).select().single();
-      if (bErr) throw bErr;
-      if (newBooking) {
-        const itemsToInsert = selectedSlots.map(slot => ({
-          madatsan: newBooking.madatsan || newBooking.MaDatSan,
-          makhunggio: slot.id,
-          giaapdung: slot.price
-        }));
-        await supabase.from('datsan_khunggio').insert(itemsToInsert);
-      }
+      const { error: bookingError } = await supabase.createBooking({
+        masan: sanInfo.MaSan,
+        date: selectedDate,
+        slotIds: selectedSlots.map((slot) => slot.id),
+        services,
+      });
+      if (bookingError) throw bookingError;
       alert('Tạo đơn đặt sân thành công!');
       setSelectedSlots([]);
       setServices({
@@ -254,6 +258,15 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-emerald-600 font-bold gap-3">
         <RefreshCw className="w-8 h-8 animate-spin" />
         <span>Đang kết nối CSDL Supabase tải thông tin sân...</span>
+      </div>
+    );
+  }
+
+  if (pageError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center">
+        <p role="alert" className="font-semibold text-rose-700">{pageError}</p>
+        <button onClick={() => navigate('/')} className="rounded-lg bg-emerald-700 px-5 py-2 text-white">Về trang chủ</button>
       </div>
     );
   }
@@ -477,7 +490,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                   <p className="text-xs text-slate-400">Có thể bấm chọn nhiều ca liên tiếp để đặt 2-3 tiếng.</p>
                 </div>
                 <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Realtime Supabase
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Tự cập nhật mỗi 30 giây
                 </span>
               </div>
 
@@ -485,17 +498,18 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
               <div className="mb-5">
                 <div className="text-xs font-bold uppercase text-slate-400 mb-2">CHỌN NGÀY ĐÁ</div>
                 <div className="grid grid-cols-6 gap-2">
-                  {[
-                    { day: 'HÔM NAY', date: '03/11', full: '2026-11-03', label: 'Thứ Ba' },
-                    { day: 'NGÀY MAI', date: '04/11', full: '2026-11-04', label: 'Thứ Tư' },
-                    { day: 'NGÀY KỊA', date: '05/11', full: '2026-11-05', label: 'Thứ Năm' },
-                    { day: 'THỨ SÁU', date: '06/11', full: '2026-11-06', label: 'Thứ Sáu' },
-                    { day: 'THỨ BẢY', date: '07/11', full: '2026-11-07', label: 'Thứ Bảy' },
-                    { day: 'CHỦ NHẬT', date: '08/11', full: '2026-11-08', label: 'Chủ Nhật' }
-                  ].map((d) => (
+                  {Array.from({ length: 6 }, (_, index) => {
+                    const date = new Date(`${getLocalDateValue()}T12:00:00`);
+                    date.setDate(date.getDate() + index);
+                    const full = getLocalDateValue(date);
+                    const dateLabel = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                    const weekday = date.toLocaleDateString('vi-VN', { weekday: 'long' });
+                    const day = index === 0 ? 'HÔM NAY' : index === 1 ? 'NGÀY MAI' : weekday.toUpperCase();
+                    return { day, date: dateLabel, full, label: weekday };
+                  }).map((d) => (
                     <button
                       key={d.full}
-                      onClick={() => setSelectedDate(d.full)}
+                      onClick={() => handleSelectDate(d.full)}
                       className={`p-3 rounded-xl border text-center transition ${
                         selectedDate === d.full 
                           ? 'bg-emerald-700 text-white border-emerald-700 font-extrabold shadow-md' 
@@ -519,6 +533,12 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
               </div>
 
               {/* GRID KHUNG GIỜ */}
+              {availabilityError ? (
+                <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">
+                  {availabilityError}
+                  <button onClick={fetchBookedSlots} className="ml-3 font-bold underline">Thử lại</button>
+                </div>
+              ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {currentDynamicSlots.map((slot) => {
                     const isSelected = selectedSlots.some(s => s.id === slot.id);
@@ -550,6 +570,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     );
                 })}
               </div>
+              )}
             </div>
 
             {/* DỊCH VỤ CỘNG THÊM (CHUẨN ĐÚNG NGHIỆP VỤ BÁO GIÁ THEO MÔN) */}
@@ -801,11 +822,11 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     </div>
                     
                     <button 
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !currentUser}
                       onClick={handleConfirmBooking}
                       className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-lg shadow-amber-500/30 transition flex items-center justify-center gap-2"
                     >
-                      {isSubmitting ? 'ĐANG LƯU CSDL...' : 'XÁC NHẬN ĐẶT SÂN & GIỮ CHỖ'} <ChevronRight className="w-4 h-4" />
+                      {isSubmitting ? 'ĐANG LƯU CSDL...' : currentUser ? 'XÁC NHẬN ĐẶT SÂN & GIỮ CHỖ' : 'ĐĂNG NHẬP ĐỂ ĐẶT SÂN'} <ChevronRight className="w-4 h-4" />
                     </button>
                   </>
                 ) : (

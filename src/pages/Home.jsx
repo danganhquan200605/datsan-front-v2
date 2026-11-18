@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, MapPin, Calendar, Clock, ChevronDown, Bell, User, 
   Flame, Award, ShieldCheck, Zap, Phone, CheckCircle, ArrowRight,
-  Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X, Lock
+  Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp } from '../supabaseClient';
 import FieldDetail from './FieldDetail';
 import Header from '../components/Header';
 
@@ -15,14 +16,23 @@ const DEFAULT_IMAGES = [
   'https://images.unsplash.com/photo-1626248801379-51a0748a5f96?auto=format&fit=crop&w=800&q=80'
 ];
 
-const TIME_SLOTS = [
-  { id: 1, start: '16:00', end: '17:30', label: '16:00 - 17:30' },
-  { id: 2, start: '17:30', end: '19:00', label: '17:30 - 19:00' },
-  { id: 3, start: '19:00', end: '20:30', label: '19:00 - 20:30 (HOT)', isGold: true },
-  { id: 4, start: '20:30', end: '22:00', label: '20:30 - 22:00' }
-];
+const getLocalDateValue = (date = new Date()) => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+};
+
+const getSlotDurationHours = (start, end) => {
+  const toMinutes = (value) => {
+    const [hours, minutes] = String(value).split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+  let minutes = toMinutes(end) - toMinutes(start);
+  if (minutes <= 0) minutes += 24 * 60;
+  return minutes / 60;
+};
 
 export default function Home() {
+  const navigate = useNavigate();
   // Duy trì phiên đăng nhập chuẩn SPA
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -35,13 +45,15 @@ export default function Home() {
   });
 
   const [loaiSanList, setLoaiSanList] = useState([]);
+  const [timeSlotList, setTimeSlotList] = useState([]);
   const [sanList, setSanList] = useState([]);
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDetailSanId, setSelectedDetailSanId] = useState(null);
   const [selectedMaLoaiSan, setSelectedMaLoaiSan] = useState(0); 
   const [selectedQuan, setSelectedQuan] = useState(''); 
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateValue());
+  const [loadError, setLoadError] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -50,44 +62,50 @@ export default function Home() {
   const [bookingSuccessModal, setBookingSuccessModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Login & 2FA Admin States
+  // Login modal remains visible until a real Supabase Auth flow is configured.
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [normalizedPhone, setNormalizedPhone] = useState('');
   const [otpCode, setOtpCode] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [step, setStep] = useState(1); // 1: SĐT, 2: OTP, 3: Admin Password
-  const [tempUser, setTempUser] = useState(null);
-  const [adminFailedAttempts, setAdminFailedAttempts] = useState(0);
-  const [adminLockUntil, setAdminLockUntil] = useState(null);
+  const [loginStep, setLoginStep] = useState(1);
+  const [loginError, setLoginError] = useState('');
 
   // Reg Pitch (Đăng ký chủ sân) Modal State
   const [showRegPitchModal, setShowRegPitchModal] = useState(false);
-  const [pitchNameInput, setPitchNameInput] = useState('');
-  const [pitchAddressInput, setPitchAddressInput] = useState('');
-  const [pitchDistrictInput, setPitchDistrictInput] = useState('Hải Châu');
 
-  // Kiểm tra thời gian khóa Admin
   useEffect(() => {
-    const lockTime = sessionStorage.getItem('admin_lock_until');
-    if (lockTime && new Date().getTime() < Number(lockTime)) {
-      setAdminLockUntil(Number(lockTime));
+    if (new URLSearchParams(window.location.search).get('login') === '1') {
+      setShowLoginModal(true);
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const { data: lsData } = await supabase.from('loaisan').select('*');
-      if (lsData) setLoaiSanList(lsData);
-      const { data: vtData } = await supabase.from('vitri').select('*');
-      const { data: sanData } = await supabase.from('san').select('*');
-      
-      const { data: datSanData } = await supabase
-        .from('datsan')
-        .select('madatsan, masan, ngaysudung, datsan_khunggio(makhunggio)')
-        .eq('ngaysudung', selectedDate);
-        
-      setBookedSlots(datSanData || []);
+      setLoadError('');
+      const [lsResult, vtResult, sanResult, slotResult, bookingResult] = await Promise.all([
+        supabase.from('loaisan').select('*'),
+        supabase.from('vitri').select('*'),
+        supabase.from('san').select('*'),
+        supabase.from('khunggio').select('*').order('makhunggio'),
+        supabase.availability(selectedDate)
+      ]);
+      const failedResult = [lsResult, vtResult, sanResult, slotResult, bookingResult].find((result) => result.error);
+      if (failedResult) throw failedResult.error;
+      const lsData = lsResult.data || [];
+      const vtData = vtResult.data || [];
+      const sanData = sanResult.data || [];
+      const slotData = slotResult.data || [];
+      setLoaiSanList(lsData);
+      setTimeSlotList(slotData.map((slot) => {
+        const id = Number(slot.makhunggio ?? slot.MaKhungGio);
+        const start = String(slot.giobatdau ?? slot.GioBatDau ?? '').slice(0, 5);
+        const end = String(slot.gioketthuc ?? slot.GioKetThuc ?? '').slice(0, 5);
+        const hour = Number(start.slice(0, 2));
+        return { id, start, end, label: `${start} - ${end}`, isGold: hour >= 17 && hour <= 20 };
+      }).filter((slot) => slot.id && slot.start && slot.end));
+      setBookedSlots(bookingResult.data || []);
       
       if (sanData) {
         const formatted = sanData.map((san, idx) => {
@@ -118,30 +136,33 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Lỗi tải dữ liệu Supabase:', err);
+      setLoadError('Không tải được dữ liệu sân. Vui lòng kiểm tra kết nối rồi thử lại.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    const initialFetch = window.setTimeout(fetchData, 0);
     const channel = supabase
       .channel('datsan-home-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'san' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'datsan' }, () => fetchData())
       .subscribe();
     return () => {
+      window.clearTimeout(initialFetch);
       supabase.removeChannel(channel);
     };
   }, [selectedDate]);
 
   const getSlotStatus = (maSan, slotId) => {
     const isBookedInDB = bookedSlots.some(
-      (b) => b.masan === maSan && b.datsan_khunggio?.some((k) => k.makhunggio === slotId)
+      (b) => Number(b.masan) === Number(maSan)
+        && !['DAHUY', 'DA_HUY', 'HUY'].includes(String(b.trangthai || '').toUpperCase())
+        && (Number(b.makhunggio) === Number(slotId)
+          || b.datsan_khunggio?.some((k) => Number(k.makhunggio) === Number(slotId)))
     );
-    if (isBookedInDB) return 'DADAT';
-    const dateNum = new Date(selectedDate).getDate();
-    return (maSan * 3 + slotId * 2 + dateNum) % 6 === 0 ? 'DADAT' : 'TRONG';
+    return isBookedInDB ? 'DADAT' : 'TRONG';
   };
 
   const filteredSan = sanList.filter((san) => {
@@ -160,203 +181,77 @@ export default function Home() {
       setShowLoginModal(true);
       return;
     }
-    setSelectedSlotForBooking({ san, slot, gia: san.GiaSan });
+    const gia = Math.round(Number(san.GiaSan) * getSlotDurationHours(slot.start, slot.end));
+    setSelectedSlotForBooking({ san, slot, gia });
     setBookingSuccessModal(true);
   };
 
-  const handleSendOtp = (e) => {
-    e.preventDefault();
-    if (phoneNumber.length >= 10) {
-      setStep(2);
-    } else {
-      alert("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 10 số)");
-    }
+  const resetAuthForm = () => {
+    setLoginStep(1);
+    setPhoneNumber('');
+    setNormalizedPhone('');
+    setOtpCode('');
+    setLoginError('');
   };
 
-  // LUỒNG XÁC THỰC OTP + PHÂN QUYỀN + ADMIN 2FA
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    if (otpCode !== '123456') {
-      alert("Mã OTP không hợp lệ. Vui lòng nhập 123456");
+  const handleSendOtp = async (event) => {
+    event.preventDefault();
+    const digits = phoneNumber.replace(/\D/g, '');
+    const e164Phone = digits.startsWith('0') ? `+84${digits.slice(1)}` : digits.startsWith('84') ? `+${digits}` : `+84${digits}`;
+    if (!/^\+84\d{9}$/.test(e164Phone)) {
+      setLoginError('Nhập số điện thoại Việt Nam gồm 10 chữ số.');
       return;
     }
-
     try {
       setIsSubmitting(true);
-      let { data: existingUser } = await supabase
-        .from('nguoidung')
-        .select('*')
-        .eq('sodienthoai', phoneNumber)
-        .maybeSingle();
-
-      let userObj = null;
-
-      if (existingUser) {
-        userObj = {
-          MaNguoiDung: existingUser.manguoidung || existingUser.MaNguoiDung,
-          TenDangNhap: existingUser.tendangnhap || existingUser.TenDangNhap || phoneNumber,
-          HoTen: existingUser.hoten || existingUser.HoTen,
-          Sdt: existingUser.sodienthoai || existingUser.SoDienThoai,
-          Email: existingUser.email || existingUser.Email,
-          VaiTro: existingUser.vaitro || existingUser.VaiTro,
-          MatKhau: existingUser.matkhau || existingUser.MatKhau
-        };
-      } else {
-        // Tự động tạo mới với quyền KHACHHANG
-        const { data: newUser, error: insertErr } = await supabase
-          .from('nguoidung')
-          .insert([
-            {
-              tendangnhap: phoneNumber,
-              sodienthoai: phoneNumber,
-              hoten: `Khách hàng ${phoneNumber.slice(-4)}`,
-              vaitro: 'KHACHHANG',
-              trangthai: 'HOATDONG'
-            }
-          ])
-          .select()
-          .single();
-
-        if (insertErr) throw insertErr;
-
-        userObj = {
-          MaNguoiDung: newUser.manguoidung || newUser.MaNguoiDung,
-          TenDangNhap: newUser.tendangnhap || newUser.TenDangNhap,
-          HoTen: newUser.hoten || newUser.HoTen,
-          Sdt: newUser.sodienthoai || newUser.SoDienThoai,
-          VaiTro: newUser.vaitro || newUser.VaiTro
-        };
-      }
-
-      // XỬ LÝ 2FA CHO ADMIN
-      if (userObj.VaiTro === 'ADMIN') {
-        if (adminLockUntil && new Date().getTime() < adminLockUntil) {
-          const minutesLeft = Math.ceil((adminLockUntil - new Date().getTime()) / 60000);
-          alert(`Tài khoản Admin tạm khóa do nhập sai mật khẩu quá 3 lần. Vui lòng thử lại sau ${minutesLeft} phút.`);
-          return;
-        }
-        setTempUser(userObj);
-        setStep(3); // Chuyển sang bước 3 nhập mật khẩu Admin
-        return;
-      }
-
-      // Đăng nhập trực tiếp cho Khách hàng & Chủ sân
-      completeLogin(userObj);
-
-    } catch (err) {
-      console.error('Lỗi khi đăng nhập bằng OTP:', err);
-      alert('Đăng nhập thất bại: ' + (err.message || 'Lỗi kết nối CSDL'));
+      setLoginError('');
+      await requestPhoneOtp(e164Phone);
+      setNormalizedPhone(e164Phone);
+      setLoginStep(2);
+    } catch (error) {
+      setLoginError(error.message || 'Không gửi được mã OTP.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Xác thực mật khẩu cấp 2 cho Admin
-  const handleVerifyAdminPassword = (e) => {
-    e.preventDefault();
-    if (!tempUser) return;
-
-    // Kiểm tra mật khẩu (Giả lập mật khẩu Admin là 'admin123' hoặc khớp DB)
-    const validPassword = tempUser.MatKhau || 'admin123';
-
-    if (adminPassword === validPassword || adminPassword === 'admin123') {
-      setAdminFailedAttempts(0);
-      sessionStorage.removeItem('admin_lock_until');
-      completeLogin(tempUser);
-    } else {
-      const newAttempts = adminFailedAttempts + 1;
-      setAdminFailedAttempts(newAttempts);
-      if (newAttempts >= 3) {
-        const lockTime = new Date().getTime() + 5 * 60 * 1000; // Khóa 5 phút
-        sessionStorage.setItem('admin_lock_until', lockTime.toString());
-        setAdminLockUntil(lockTime);
-        alert("Bạn đã nhập sai mật khẩu 3 lần. Tạm khóa đăng nhập Admin trong 5 phút!");
-        setShowLoginModal(false);
-        resetAuthForm();
-      } else {
-        alert(`Mật khẩu Admin không chính xác. Bạn còn ${3 - newAttempts} lần thử.`);
-      }
+  const handleVerifyOtp = async (event) => {
+    event.preventDefault();
+    try {
+      setIsSubmitting(true);
+      setLoginError('');
+      const session = await verifyPhoneOtp(normalizedPhone, otpCode.trim());
+      sessionStorage.setItem('datsan_access_token', session.accessToken);
+      sessionStorage.setItem('datsan_refresh_token', session.refreshToken);
+      setCurrentUser(session.user);
+      sessionStorage.setItem('datsan_user', JSON.stringify(session.user));
+      setShowLoginModal(false);
+      resetAuthForm();
+    } catch (error) {
+      setLoginError(error.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+    } finally {
+      setIsSubmitting(false);
     }
-  };
-
-  const completeLogin = (userObj) => {
-    setCurrentUser(userObj);
-    sessionStorage.setItem('datsan_user', JSON.stringify(userObj));
-    setShowLoginModal(false);
-    resetAuthForm();
-  };
-
-  const resetAuthForm = () => {
-    setStep(1);
-    setPhoneNumber('');
-    setOtpCode('');
-    setAdminPassword('');
-    setTempUser(null);
   };
 
   // XỬ LÝ NÂNG QUYỀN TỪ KHACHHANG THÀNH CHUSAN
   const handleRegisterOwnerSubmit = async (e) => {
     e.preventDefault();
-    if (!currentUser) return;
-    try {
-      setIsSubmitting(true);
-      
-      // 1. Cập nhật vai trò trong CSDL NguoiDung
-      const { error: updateErr } = await supabase
-        .from('nguoidung')
-        .update({ vaitro: 'CHUSAN' })
-        .eq('manguoidung', currentUser.MaNguoiDung);
-
-      if (updateErr) throw updateErr;
-
-      // 2. Cập nhật State & LocalStorage người dùng ngay lập tức
-      const updatedUser = { ...currentUser, VaiTro: 'CHUSAN' };
-      setCurrentUser(updatedUser);
-      sessionStorage.setItem('datsan_user', JSON.stringify(updatedUser));
-
-      alert('Đăng ký làm Chủ Sân thành công! Quyền hạn của bạn đã được nâng cấp.');
-      setShowRegPitchModal(false);
-      setPitchNameInput('');
-      setPitchAddressInput('');
-    } catch (err) {
-      console.error('Lỗi nâng cấp tài khoản:', err);
-      alert('Lỗi đăng ký: ' + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    setShowRegPitchModal(false);
+    navigate('/register-field');
   };
 
   const confirmBookingToSupabase = async () => {
     if (!selectedSlotForBooking || !currentUser) return;
     try {
       setIsSubmitting(true);
-      const { san, slot, gia } = selectedSlotForBooking;
-      const { data: newBooking, error: bookingErr } = await supabase
-        .from('datsan')
-        .insert([
-          {
-            makhachhang: currentUser.MaNguoiDung,
-            masan: san.MaSan,
-            ngaysudung: selectedDate,
-            tongtien: gia,
-            trangthai: 'CHOXACNHAN'
-          }
-        ])
-        .select()
-        .single();
-        
+      const { san, slot } = selectedSlotForBooking;
+      const { error: bookingErr } = await supabase.createBooking({
+        masan: san.MaSan,
+        date: selectedDate,
+        slotIds: [slot.id],
+      });
       if (bookingErr) throw bookingErr;
-      
-      if (newBooking) {
-        const maDatSan = newBooking.madatsan || newBooking.MaDatSan;
-        await supabase.from('datsan_khunggio').insert([
-          {
-            madatsan: maDatSan,
-            makhunggio: slot.id,
-            giaapdung: gia
-          }
-        ]);
-      }
       alert('Tạo đơn đặt sân thành công!');
       setBookingSuccessModal(false);
       fetchData();
@@ -443,6 +338,8 @@ export default function Home() {
                   <option value="Cẩm Lệ">Q. Cẩm Lệ (Hòa Xuân)</option>
                   <option value="Thanh Khê">Q. Thanh Khê</option>
                   <option value="Sơn Trà">Q. Sơn Trà</option>
+                  <option value="Ngũ Hành Sơn">Q. Ngũ Hành Sơn</option>
+                  <option value="Liên Chiểu">Q. Liên Chiểu</option>
                 </select>
               </div>
               <div className="p-3 bg-slate-50 border border-emerald-500 rounded-xl ring-2 ring-emerald-500/20">
@@ -452,6 +349,7 @@ export default function Home() {
                 <input 
                   type="date" 
                   value={selectedDate}
+                  min={getLocalDateValue()}
                   onChange={(e) => setSelectedDate(e.target.value)}
                   className="w-full bg-transparent text-xs font-bold text-slate-900 cursor-pointer focus:outline-none"
                 />
@@ -466,10 +364,7 @@ export default function Home() {
                   className="w-full bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
                 >
                   <option value="ALL">Tất cả khung giờ</option>
-                  <option value="1">Ca 1: 16:00 - 17:30</option>
-                  <option value="2">Ca 2: 17:30 - 19:00</option>
-                  <option value="3">Ca 3: 19:00 - 20:30 (HOT)</option>
-                  <option value="4">Ca 4: 20:30 - 22:00</option>
+                  {timeSlotList.map((slot) => <option key={slot.id} value={slot.id}>{slot.label}</option>)}
                 </select>
               </div>
             </div>
@@ -494,7 +389,7 @@ export default function Home() {
             <div>
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 mb-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                <span>BẢNG Khung Giờ REAL-TIME</span>
+                <span>BẢNG KHUNG GIỜ (TỰ CẬP NHẬT)</span>
               </div>
               <h2 className="text-xl font-black text-slate-900">Bảng Giờ Thi Đấu Ngày {selectedDate}</h2>
             </div>
@@ -506,13 +401,18 @@ export default function Home() {
           </div>
           {loading ? (
             <div className="py-12 text-center text-emerald-600 font-bold">Đang tải bảng giờ...</div>
+          ) : loadError ? (
+            <div role="alert" className="py-12 text-center text-rose-600 font-semibold">
+              <p>{loadError}</p>
+              <button onClick={fetchData} className="mt-3 rounded-lg bg-emerald-700 px-4 py-2 text-white">Thử tải lại</button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[11px]">
                     <th className="py-3 px-4 w-72">Sân Thi Đấu & Địa Chỉ</th>
-                    {TIME_SLOTS.map(s => (
+                    {timeSlotList.map(s => (
                       <th key={s.id} className="py-3 px-3 text-center w-48">{s.label}</th>
                     ))}
                   </tr>
@@ -529,7 +429,7 @@ export default function Home() {
                         </div>
                         <div className="text-[11px] text-slate-400">📍 {san.ViTri.DiaChi}, Q. {san.ViTri.Quan}</div>
                       </td>
-                      {TIME_SLOTS.map((slot) => {
+                      {timeSlotList.map((slot) => {
                         const status = getSlotStatus(san.MaSan, slot.id);
                         const isAvailable = status === 'TRONG';
                         let btnClass = 'bg-slate-100 text-slate-400 cursor-not-allowed';
@@ -537,10 +437,10 @@ export default function Home() {
                         if (isAvailable) {
                           if (slot.isGold) {
                             btnClass = 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold shadow-sm';
-                            labelText = `${Math.round(san.GiaSan / 1000)}k • HOT`;
+                            labelText = `${Math.round(san.GiaSan * getSlotDurationHours(slot.start, slot.end) / 1000)}k • HOT`;
                           } else {
                             btnClass = 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm';
-                            labelText = `${Math.round(san.GiaSan / 1000)}k • Đặt ngay`;
+                            labelText = `${Math.round(san.GiaSan * getSlotDurationHours(slot.start, slot.end) / 1000)}k • Đặt ngay`;
                           }
                         }
                         return (
@@ -596,13 +496,14 @@ export default function Home() {
                 </div>
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 font-medium block">Giá thuê:</span>
+                    <span className="text-[10px] text-slate-400 font-medium block">Giá thuê/giờ:</span>
                     <span className="text-base font-black text-slate-900">
                       {Number(san.GiaSan).toLocaleString('vi-VN')} đ
                     </span>
                   </div>
                   <button 
-                    onClick={() => handleQuickBook(san, TIME_SLOTS[0])}
+                    onClick={() => timeSlotList[0] && handleQuickBook(san, timeSlotList[0])}
+                    disabled={!timeSlotList.length}
                     className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
                   >
                     Đặt Ngay
@@ -626,110 +527,33 @@ export default function Home() {
             </button>
             
             <div className="text-center mb-6">
-              <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                {step === 3 ? <Lock className="w-6 h-6 text-amber-600" /> : <Phone className="w-6 h-6 text-emerald-600" />}
-              </div>
-              <h2 className="text-xl font-black text-slate-900">
-                {step === 1 && 'Đăng nhập / Đăng ký'}
-                {step === 2 && 'Xác thực OTP'}
-                {step === 3 && 'Xác thực Quản Trị Viên'}
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                {step === 1 && 'Sử dụng số điện thoại để đặt sân nhanh chóng.'}
-                {step === 2 && `Mã OTP 6 số đã gửi đến ${phoneNumber}`}
-                {step === 3 && 'Tài khoản ADMIN yêu cầu mật khẩu bảo mật cấp 2.'}
-              </p>
+              <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3"><Phone className="w-6 h-6 text-emerald-600" /></div>
+              <h2 className="text-xl font-black text-slate-900">{loginStep === 1 ? 'Đăng nhập / Đăng ký' : 'Xác thực OTP'}</h2>
+              <p className="text-xs text-slate-500 mt-1">{loginStep === 1 ? 'Nhập số điện thoại để nhận mã xác thực.' : `Nhập mã được gửi đến ${normalizedPhone}`}</p>
             </div>
-
-            {step === 1 && (
+            {loginStep === 1 ? (
               <form onSubmit={handleSendOtp} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Số điện thoại</label>
-                  <input 
-                    type="tel" 
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Nhập số điện thoại..."
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                    autoFocus
-                    required
-                  />
-                </div>
-                <button 
-                  type="submit"
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-sm"
-                >
-                  Gửi mã xác thực
-                </button>
+                <label className="block text-xs font-bold text-slate-700">Số điện thoại
+                  <input type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value.replace(/[^\d+ ]/g, ''))} placeholder="0912345678" className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" required />
+                </label>
+                {loginError && <p role="alert" className="text-xs text-rose-600">{loginError}</p>}
+                <button disabled={isSubmitting} className="w-full py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl disabled:opacity-50">{isSubmitting ? 'Đang gửi...' : 'Gửi mã OTP'}</button>
               </form>
-            )}
-
-            {step === 2 && (
+            ) : (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mã OTP</label>
-                  <input 
-                    type="text" 
-                    maxLength={6}
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
-                    placeholder="Gợi ý: Nhập 123456"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-center tracking-widest font-bold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                    autoFocus
-                    required
-                  />
-                </div>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-sm disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Đang xử lý...' : 'Xác nhận đăng nhập'}
-                </button>
-                <div className="text-center">
-                  <button 
-                    type="button" 
-                    onClick={() => setStep(1)}
-                    className="text-xs text-emerald-600 font-bold hover:underline"
-                  >
-                    Đổi số điện thoại khác
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {step === 3 && (
-              <form onSubmit={handleVerifyAdminPassword} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mật khẩu Admin Cấp 2</label>
-                  <input 
-                    type="password" 
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="Nhập mật khẩu admin..."
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
-                    autoFocus
-                    required
-                  />
-                  {adminFailedAttempts > 0 && (
-                    <p className="text-[11px] text-red-500 mt-1 font-semibold">
-                      Sai {adminFailedAttempts}/3 lần. Nhập sai 3 lần sẽ bị khóa 5 phút.
-                    </p>
-                  )}
-                </div>
-                <button 
-                  type="submit"
-                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition shadow-sm"
-                >
-                  Xác nhận Quyền Admin
-                </button>
+                <label className="block text-xs font-bold text-slate-700">Mã OTP
+                  <input type="text" inputMode="numeric" maxLength={8} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} placeholder="Nhập mã OTP" className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-sm" required />
+                </label>
+                {loginError && <p role="alert" className="text-xs text-rose-600">{loginError}</p>}
+                <button disabled={isSubmitting} className="w-full py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl disabled:opacity-50">{isSubmitting ? 'Đang xác minh...' : 'Xác nhận đăng nhập'}</button>
+                <button type="button" onClick={() => { setLoginStep(1); setLoginError(''); }} className="w-full text-xs text-emerald-700">Đổi số điện thoại</button>
               </form>
             )}
           </div>
         </div>
       )}
 
-      {/* MODAL ĐĂNG KÝ CHỦ SÂN (NÂNG QUYỀN ROLE UPGRADE) */}
+      {/* YÊU CẦU ĐĂNG KÝ CHỦ SÂN */}
       {showRegPitchModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
@@ -740,53 +564,10 @@ export default function Home() {
               <X className="w-4 h-4" />
             </button>
             <div className="text-center mb-6">
-              <h2 className="text-xl font-black text-slate-900">Đăng Ký Trở Thành Chủ Sân</h2>
-              <p className="text-xs text-slate-500 mt-1">Nâng cấp tài khoản để bắt đầu quản lý cụm sân của bạn</p>
+              <h2 className="text-xl font-black text-slate-900">Đăng ký làm chủ sân</h2>
+              <p className="text-sm text-slate-600 mt-2">Quyền Chủ Sân chỉ được cấp sau khi quản trị viên duyệt thông tin sân.</p>
             </div>
-            <form onSubmit={handleRegisterOwnerSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Tên Cụm Sân</label>
-                <input 
-                  type="text" 
-                  value={pitchNameInput}
-                  onChange={(e) => setPitchNameInput(e.target.value)}
-                  placeholder="Ví dụ: Sân Bóng Arena Đà Nẵng"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-emerald-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Quận Huyện</label>
-                <select 
-                  value={pitchDistrictInput}
-                  onChange={(e) => setPitchDistrictInput(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
-                >
-                  <option value="Hải Châu">Hải Châu</option>
-                  <option value="Cẩm Lệ">Cẩm Lệ</option>
-                  <option value="Thanh Khê">Thanh Khê</option>
-                  <option value="Sơn Trà">Sơn Trà</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Địa Chỉ Chi Tiết</label>
-                <input 
-                  type="text" 
-                  value={pitchAddressInput}
-                  onChange={(e) => setPitchAddressInput(e.target.value)}
-                  placeholder="Ví dụ: 123 Nguyễn Hữu Thọ"
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-emerald-500"
-                  required
-                />
-              </div>
-              <button 
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition"
-              >
-                {isSubmitting ? 'Đang nâng cấp...' : 'Gửi Đăng Ký & Nâng Cấp Tài Khoản'}
-              </button>
-            </form>
+            <button onClick={handleRegisterOwnerSubmit} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition">Tiếp tục gửi thông tin sân</button>
           </div>
         </div>
       )}

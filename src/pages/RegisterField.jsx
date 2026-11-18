@@ -14,7 +14,7 @@ export default function RegisterField() {
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
@@ -73,7 +73,9 @@ export default function RegisterField() {
 
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `fields/${fileName}`;
+      const profileId = currentUser?.MaNguoiDung || currentUser?.manguoidung;
+      if (!profileId) throw new Error('Tài khoản chưa liên kết với hồ sơ DatSan. Vui lòng đăng nhập lại.');
+      const filePath = `fields/${profileId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('san-images')
@@ -184,21 +186,11 @@ export default function RegisterField() {
         trangthai: 'TRONG'
       }));
 
-      await supabase.from('khunggio').insert(slotsToInsert);
+      const { error: slotError } = await supabase.from('khunggio').insert(slotsToInsert);
+      if (slotError) throw slotError;
 
-      const { error: roleErr } = await supabase
-        .from('nguoidung')
-        .update({ vaitro: 'CHUSAN' })
-        .eq('manguoidung', userId);
-
-      if (roleErr) throw roleErr;
-
-      const updatedUser = { ...currentUser, VaiTro: 'CHUSAN', vaitro: 'CHUSAN' };
-      setCurrentUser(updatedUser);
-      sessionStorage.setItem('datsan_user', JSON.stringify(updatedUser));
-
-      alert('Đăng ký cụm sân toàn diện thành công!');
-      navigate('/owner');
+      alert('Đã gửi sân để quản trị viên xét duyệt. Quyền Chủ Sân sẽ được cấp sau khi sân được duyệt.');
+      navigate('/');
 
     } catch (err) {
       console.error('Lỗi khi đăng ký sân:', err);

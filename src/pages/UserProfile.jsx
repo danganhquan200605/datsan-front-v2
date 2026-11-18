@@ -16,7 +16,7 @@ export default function UserProfile() {
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
@@ -42,7 +42,10 @@ export default function UserProfile() {
 
   // Tải danh sách đơn đặt sân từ Supabase
   const fetchUserBookings = async () => {
-    if (!user?.MaNguoiDung && !user?.manguoidung) return;
+    if (!user?.MaNguoiDung && !user?.manguoidung) {
+      setLoadingBookings(false);
+      return;
+    }
     const userId = user.MaNguoiDung || user.manguoidung;
 
     try {
@@ -93,7 +96,8 @@ export default function UserProfile() {
   };
 
   useEffect(() => {
-    fetchUserBookings();
+    const initialFetch = window.setTimeout(fetchUserBookings, 0);
+    return () => window.clearTimeout(initialFetch);
   }, []);
 
   // Xử lý Cập nhật thông tin cá nhân

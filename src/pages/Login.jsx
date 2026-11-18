@@ -1,7 +1,5 @@
+import { Navigate } from 'react-router-dom';
+
 export default function Login() {
-  return (
-    <div style={{ padding: '2rem', textAlign: 'center' }}>
-      <h2>Trang Chủ DatSanOnline</h2>
-    </div>
-  );
+  return <Navigate to="/?login=1" replace />;
 }

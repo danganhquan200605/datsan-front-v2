@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, Users, Building2, CheckCircle2, XCircle, 
   RefreshCw, MapPin, Tag, UserCheck, Search, DollarSign, Eye, X, Award, CheckSquare
@@ -8,13 +7,11 @@ import { supabase } from '../supabaseClient';
 import Header from '../components/Header';
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
-
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
@@ -55,7 +52,7 @@ export default function AdminDashboard() {
       // 2. Tải danh sách người dùng
       const { data: usersData, error: usersErr } = await supabase
         .from('nguoidung')
-        .select('*')
+        .select('manguoidung,tendangnhap,email,sodienthoai,hoten,vaitro,trangthai')
         .order('manguoidung', { ascending: false });
 
       if (usersErr) throw usersErr;
@@ -64,11 +61,11 @@ export default function AdminDashboard() {
       // 3. Đếm tổng số đơn đặt sân & tính doanh thu sàn
       const { data: bookingData, count, error: bookingErr } = await supabase
         .from('datsan')
-        .select('giatien', { count: 'exact' });
+        .select('tongtien', { count: 'exact' });
 
       if (!bookingErr && bookingData) {
         setBookingCount(count || 0);
-        const revenue = bookingData.reduce((sum, item) => sum + Number(item.giatien || 0), 0);
+        const revenue = bookingData.reduce((sum, item) => sum + Number(item.tongtien || 0), 0);
         setTotalSystemRevenue(revenue);
       }
 
@@ -80,7 +77,8 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchAdminData();
+    const initialFetch = window.setTimeout(fetchAdminData, 0);
+    return () => window.clearTimeout(initialFetch);
   }, []);
 
   // Xử lý Duyệt / Khóa sân bãi
@@ -92,6 +90,16 @@ export default function AdminDashboard() {
         .eq('masan', maSan);
 
       if (error) throw error;
+
+      if (newStatus === 'HOATDONG') {
+        const field = sanList.find((item) => Number(item.masan) === Number(maSan));
+        if (field?.machusan) {
+          const { error: ownerError } = await supabase.from('nguoidung')
+            .update({ vaitro: 'CHUSAN' })
+            .eq('manguoidung', field.machusan);
+          if (ownerError) throw ownerError;
+        }
+      }
 
       alert(`Đã cập nhật trạng thái sân thành: ${newStatus}`);
       if (selectedFieldDetail?.masan === maSan) {

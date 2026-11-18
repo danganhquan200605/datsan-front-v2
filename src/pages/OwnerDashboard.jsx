@@ -15,7 +15,7 @@ export default function OwnerDashboard() {
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
@@ -83,7 +83,8 @@ export default function OwnerDashboard() {
   };
 
   useEffect(() => {
-    fetchOwnerData();
+    const initialFetch = window.setTimeout(fetchOwnerData, 0);
+    return () => window.clearTimeout(initialFetch);
   }, [ownerId]);
 
   // Cập nhật trạng thái đơn đặt sân (VD: Xác nhận cọc / Hoàn thành)

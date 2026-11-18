@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
-  Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2, Lock, X
+  Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2
 } from 'lucide-react';
 
 export default function Header({ 
@@ -14,52 +14,14 @@ export default function Header({
   const [showDropdown, setShowDropdown] = useState(false);
   const navigate = useNavigate();
 
-  // State quản lý Modal Mật khẩu Admin Cấp 2
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [attempts, setAttempts] = useState(0);
-
-  // MẬT KHẨU CẤP 2 CHUẨN
-  const DEFAULT_ADMIN_PIN = 'admin123';
-  const BACKUP_ADMIN_PIN = '123456';
-
   // Xử lý đăng xuất
   const handleLogout = () => {
     sessionStorage.removeItem('datsan_user');
+    sessionStorage.removeItem('datsan_access_token');
+    sessionStorage.removeItem('datsan_refresh_token');
     setUser(null);
     setShowDropdown(false);
     navigate('/');
-  };
-
-  // Mở modal xác thực khi bấm nút hoặc chọn menu Admin
-  const handleOpenAdminModal = () => {
-    setShowDropdown(false);
-    setErrorMsg('');
-    setAdminPin('');
-    setShowAdminModal(true);
-  };
-
-  // Xử lý kiểm tra Mật khẩu cấp 2
-  const handleVerifyAdminPin = (e) => {
-    e.preventDefault();
-
-    if (attempts >= 3) {
-      setErrorMsg('Bạn đã nhập sai 3 lần. Vui lòng thử lại sau!');
-      return;
-    }
-
-    if (adminPin === DEFAULT_ADMIN_PIN || adminPin === BACKUP_ADMIN_PIN) {
-      setShowAdminModal(false);
-      setAdminPin('');
-      setErrorMsg('');
-      setAttempts(0);
-      navigate('/admin');
-    } else {
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-      setErrorMsg(`Sai mật khẩu cấp 2! (Sai ${newAttempts}/3 lần)`);
-    }
   };
 
   // Lấy tên hiển thị & vai trò
@@ -136,7 +98,7 @@ export default function Header({
                   <button 
                     onClick={() => {
                       if (userRole === 'ADMIN') {
-                        handleOpenAdminModal();
+                        navigate('/admin');
                       } else {
                         navigate('/owner');
                       }
@@ -189,7 +151,7 @@ export default function Header({
 
                       {userRole === 'ADMIN' && (
                         <button 
-                          onClick={handleOpenAdminModal}
+                        onClick={() => { setShowDropdown(false); navigate('/admin'); }}
                           className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-semibold transition"
                         >
                           <Shield className="w-4 h-4 text-rose-500" /> Trang quản trị Admin
@@ -229,63 +191,12 @@ export default function Header({
             </nav>
             <div className="flex items-center gap-2 text-emerald-700 font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              Realtime Supabase Sync
+              Tự cập nhật mỗi 30 giây
             </div>
           </div>
         </div>
       </header>
 
-      {/* POPUP MODAL MẬT KHẨU CẤP 2 */}
-      {showAdminModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in duration-200">
-            <button 
-              onClick={() => setShowAdminModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="text-center mb-6">
-              <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
-                <Lock className="w-7 h-7" />
-              </div>
-              <h3 className="text-xl font-black text-slate-900">Xác thực Quản Trị Viên</h3>
-              <p className="text-xs text-slate-500 font-medium mt-1">
-                Tài khoản ADMIN yêu cầu mật khẩu bảo mật cấp 2.
-              </p>
-            </div>
-
-            <form onSubmit={handleVerifyAdminPin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Mật khẩu Admin Cấp 2</label>
-                <input 
-                  type="password" 
-                  value={adminPin}
-                  onChange={(e) => setAdminPin(e.target.value)}
-                  placeholder="Nhập mật khẩu admin..."
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500 transition text-center tracking-widest text-slate-800"
-                  autoFocus
-                  required
-                />
-              </div>
-
-              {errorMsg && (
-                <p className="text-xs font-bold text-rose-600 text-center animate-bounce">
-                  {errorMsg}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs rounded-xl shadow-lg transition"
-              >
-                Xác nhận Quyền Admin
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }
