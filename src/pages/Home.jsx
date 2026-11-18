@@ -110,6 +110,13 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const dateInputRef = useRef(null);
 
+  const [currentClock, setCurrentClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const clockFormatted = currentClock.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
   const quickDateInfo = useMemo(() => getQuickDateList(selectedDate), [selectedDate]);
   
   // Booking Modal States
@@ -207,16 +214,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const initialFetch = window.setTimeout(fetchData, 0);
-    const channel = supabase
-      .channel('datsan-home-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'san' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'datsan' }, () => fetchData())
-      .subscribe();
-    return () => {
-      window.clearTimeout(initialFetch);
-      supabase.removeChannel(channel);
-    };
+    fetchData();
   }, [selectedDate]);
 
   const getSlotStatus = (maSan, slotId) => {
@@ -512,8 +510,12 @@ export default function Home() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 mb-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                <span>BẢNG KHUNG GIỜ (TỰ CẬP NHẬT)</span>
+                <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="uppercase tracking-wider">BẢNG KHUNG GIỜ THI ĐẤU</span>
+                <span className="text-slate-300 font-normal">•</span>
+                <span className="font-mono text-slate-600 font-semibold bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                  {clockFormatted}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-xl font-black text-slate-900">Bảng Giờ Thi Đấu Ngày {selectedDate}</h2>

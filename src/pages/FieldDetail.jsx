@@ -100,6 +100,14 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   const quickDateInfo = useMemo(() => getQuickDateList(selectedDate), [selectedDate]);
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [selectedShift, setSelectedShift] = useState('ALL');
+
+  const [currentClock, setCurrentClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const clockFormatted = currentClock.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dateFormatted = currentClock.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
   
   // Login Modal States
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -251,13 +259,6 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
   useEffect(() => {
     fetchBookedSlots();
-    const channel = supabase
-      .channel('detail-realtime-sub')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'datsan' }, () => fetchBookedSlots())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [currentSanId, selectedDate]);
 
   const handleSelectDate = (date) => {
@@ -608,8 +609,9 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                   <h3 className="font-extrabold text-base text-slate-900">Bảng Khung Giờ Thi Đấu Trực Quan</h3>
                   <p className="text-xs text-slate-400">Có thể bấm chọn nhiều ca liên tiếp để đặt 2-3 tiếng.</p>
                 </div>
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Tự cập nhật mỗi 30 giây
+                <span className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full flex items-center gap-1.5 font-mono shadow-2xs">
+                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{clockFormatted} • {dateFormatted}</span>
                 </span>
               </div>
 

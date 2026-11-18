@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
-  Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2
+  Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2, Clock
 } from 'lucide-react';
 
 export default function Header({ 
@@ -27,6 +27,14 @@ export default function Header({
   // Lấy tên hiển thị & vai trò
   const displayName = user?.HoTen || user?.hoten || 'Tài khoản';
   const userRole = user?.VaiTro || user?.vaitro || 'KHACHHANG';
+
+  const [currentClock, setCurrentClock] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentClock(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const timeFormatted = currentClock.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dateFormatted = currentClock.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
     <>
@@ -189,9 +197,11 @@ export default function Header({
               <a href="#matrix-section" className="text-slate-600 hover:text-emerald-600 py-3 transition">Lưới Khung Giờ Real-time</a>
               <a href="#venues-section" className="text-slate-600 hover:text-emerald-600 py-3 transition">Danh Sách Cụm Sân</a>
             </nav>
-            <div className="flex items-center gap-2 text-emerald-700 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              Tự cập nhật mỗi 30 giây
+            <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+              <Clock className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="font-mono font-bold text-slate-800">{timeFormatted}</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-500 text-[11px]">{dateFormatted}</span>
             </div>
           </div>
         </div>
