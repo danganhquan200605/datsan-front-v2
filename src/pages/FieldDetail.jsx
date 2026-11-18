@@ -974,8 +974,13 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                 >
                   {isSubmitting ? 'Đang gửi...' : 'Gửi mã OTP'}
                 </button>
-                <div className="p-3 bg-slate-50 rounded-xl text-[11px] text-slate-500 border border-slate-100">
-                  <span className="font-bold text-slate-700">Số test:</span> 0905123456 (Khách) hoặc 0905888999 (Chủ sân) • OTP: <b>123456</b>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-left">
+                  <div className="text-[11px] font-bold text-slate-500 mb-1.5">💡 Số thử nghiệm có sẵn (OTP: 123456):</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => setPhoneNumber('0912345678')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-emerald-700 hover:bg-emerald-50">0912345678</button>
+                    <button type="button" onClick={() => setPhoneNumber('0905123456')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-slate-700 hover:bg-slate-100">0905123456 (Khách)</button>
+                    <button type="button" onClick={() => setPhoneNumber('0905888999')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-blue-700 hover:bg-blue-50">0905888999 (Chủ sân)</button>
+                  </div>
                 </div>
               </form>
             ) : (
