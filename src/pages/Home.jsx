@@ -38,6 +38,51 @@ const getSlotShift = (start) => {
   return 'OTHER';
 };
 
+const getQuickDateList = (selectedDateStr) => {
+  const todayStr = getLocalDateValue();
+  const selected = new Date(`${selectedDateStr || todayStr}T12:00:00`);
+  const today = new Date(`${todayStr}T12:00:00`);
+  
+  const diffDays = Math.round((selected.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  
+  let startOffset = 0;
+  if (diffDays > 2) {
+    startOffset = diffDays - 2;
+  }
+  if (startOffset < 0) startOffset = 0;
+  
+  const list = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today.getTime());
+    d.setDate(today.getDate() + startOffset + i);
+    const full = getLocalDateValue(d);
+    const dateLabel = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+    const weekday = d.toLocaleDateString('vi-VN', { weekday: 'short' });
+    const weekdayLong = d.toLocaleDateString('vi-VN', { weekday: 'long' });
+    
+    let title = weekday;
+    if (full === todayStr) {
+      title = 'Hôm nay';
+    } else {
+      const tomorrow = new Date(today.getTime());
+      tomorrow.setDate(today.getDate() + 1);
+      if (full === getLocalDateValue(tomorrow)) {
+        title = 'Ngày mai';
+      }
+    }
+    
+    list.push({
+      full,
+      label: `${title} (${dateLabel})`,
+      shortLabel: `${dateLabel}`,
+      title,
+      weekdayLong,
+      isSelected: full === selectedDateStr
+    });
+  }
+  return { list, isNotToday: diffDays > 0, todayStr };
+};
+
 export default function Home() {
   const navigate = useNavigate();
   // Duy trì phiên đăng nhập chuẩn SPA
@@ -64,6 +109,8 @@ export default function Home() {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const dateInputRef = useRef(null);
+
+  const quickDateInfo = useMemo(() => getQuickDateList(selectedDate), [selectedDate]);
   
   // Booking Modal States
   const [selectedSlotForBooking, setSelectedSlotForBooking] = useState(null);
@@ -414,35 +461,36 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Thanh chọn nhanh ngày sử dụng (7 ngày tới) */}
+            {/* Thanh chọn nhanh ngày sử dụng (đồng bộ động theo ngày/tháng được chọn) */}
             <div className="flex items-center gap-1.5 mb-5 overflow-x-auto pb-1 text-left">
               <span className="text-slate-400 font-bold uppercase text-[10px] shrink-0 mr-1 flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-emerald-600" /> Chọn nhanh:
               </span>
-              {Array.from({ length: 7 }, (_, index) => {
-                const date = new Date();
-                date.setDate(date.getDate() + index);
-                const full = getLocalDateValue(date);
-                const dateLabel = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-                const weekday = date.toLocaleDateString('vi-VN', { weekday: 'short' });
-                const title = index === 0 ? 'Hôm nay' : index === 1 ? 'Ngày mai' : weekday;
-                const isSelected = selectedDate === full;
-                return (
-                  <button
-                    key={full}
-                    type="button"
-                    onClick={() => setSelectedDate(full)}
-                    className={`px-2.5 py-1 rounded-lg font-bold text-xs shrink-0 transition flex items-center gap-1 ${
-                      isSelected 
-                        ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500' 
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <span>{title}</span>
-                    <span className="opacity-80 font-normal text-[11px]">({dateLabel})</span>
-                  </button>
-                );
-              })}
+              {quickDateInfo.isNotToday && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(quickDateInfo.todayStr)}
+                  className="px-2.5 py-1 rounded-lg font-bold text-xs shrink-0 transition bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1 shadow-xs"
+                  title="Quay lại ngày hôm nay"
+                >
+                  <span>↩ Hôm nay</span>
+                </button>
+              )}
+              {quickDateInfo.list.map((item) => (
+                <button
+                  key={item.full}
+                  type="button"
+                  onClick={() => setSelectedDate(item.full)}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-xs shrink-0 transition flex items-center gap-1 ${
+                    item.isSelected 
+                      ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500' 
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <span>{item.title}</span>
+                  <span className="opacity-80 font-normal text-[11px]">({item.shortLabel})</span>
+                </button>
+              ))}
             </div>
             
             <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-600">
@@ -470,29 +518,30 @@ export default function Home() {
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-xl font-black text-slate-900">Bảng Giờ Thi Đấu Ngày {selectedDate}</h2>
                 <div className="flex items-center gap-1 overflow-x-auto py-1">
-                  {Array.from({ length: 5 }, (_, index) => {
-                    const date = new Date();
-                    date.setDate(date.getDate() + index);
-                    const full = getLocalDateValue(date);
-                    const dateLabel = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-                    const weekday = date.toLocaleDateString('vi-VN', { weekday: 'short' });
-                    const title = index === 0 ? 'Hôm nay' : index === 1 ? 'Ngày mai' : weekday;
-                    const isSelected = selectedDate === full;
-                    return (
-                      <button
-                        key={full}
-                        type="button"
-                        onClick={() => setSelectedDate(full)}
-                        className={`px-2 py-1 rounded-md text-[11px] font-bold transition shrink-0 ${
-                          isSelected 
-                            ? 'bg-emerald-700 text-white shadow-sm' 
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {title} ({dateLabel})
-                      </button>
-                    );
-                  })}
+                  {quickDateInfo.isNotToday && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDate(quickDateInfo.todayStr)}
+                      className="px-2 py-1 rounded-md text-[11px] font-bold transition shrink-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      title="Quay lại hôm nay"
+                    >
+                      ↩ Hôm nay
+                    </button>
+                  )}
+                  {quickDateInfo.list.slice(0, 6).map((item) => (
+                    <button
+                      key={item.full}
+                      type="button"
+                      onClick={() => setSelectedDate(item.full)}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition shrink-0 ${
+                        item.isSelected 
+                          ? 'bg-emerald-700 text-white shadow-sm' 
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {item.title} ({item.shortLabel})
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -526,7 +575,7 @@ export default function Home() {
                       <td className="py-4 px-4">
                         <div 
                           className="font-extrabold text-sm text-slate-900 cursor-pointer hover:text-emerald-600 transition"
-                          onClick={() => navigate(`/field/${san.MaSan}`)}
+                          onClick={() => navigate(`/field/${san.MaSan}`, { state: { selectedDate } })}
                         >
                           {san.TenSan}
                         </div>
@@ -582,7 +631,7 @@ export default function Home() {
             <div key={san.MaSan} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col group">
               <div 
                 className="relative h-48 bg-slate-100 overflow-hidden cursor-pointer"
-                onClick={() => navigate(`/field/${san.MaSan}`)}
+                onClick={() => navigate(`/field/${san.MaSan}`, { state: { selectedDate } })}
               >
                 <img 
                   src={san.Image} 
@@ -594,7 +643,7 @@ export default function Home() {
               <div className="p-5 flex-1 flex flex-col justify-between">
                 <div>
                   <h3 
-                    onClick={() => navigate(`/field/${san.MaSan}`)}
+                    onClick={() => navigate(`/field/${san.MaSan}`, { state: { selectedDate } })}
                     className="font-extrabold text-base text-slate-900 group-hover:text-emerald-600 transition mb-1 cursor-pointer"
                   >
                     {san.TenSan}
@@ -612,7 +661,7 @@ export default function Home() {
                     </span>
                   </div>
                   <button 
-                    onClick={() => navigate(`/field/${san.MaSan}`)}
+                    onClick={() => navigate(`/field/${san.MaSan}`, { state: { selectedDate } })}
                     className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
                   >
                     Đặt Ngay

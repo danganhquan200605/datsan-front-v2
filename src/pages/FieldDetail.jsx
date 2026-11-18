@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, Link, useParams, useLocation } from 'react-router-dom';
 import { 
   MapPin, Calendar, Clock, ArrowLeft, ShieldCheck, Zap, Star, 
   Check, Phone, CheckCircle, Navigation, Coffee, Award, ChevronRight, Video, Sparkles, Car, Wifi, Info,
@@ -31,13 +31,60 @@ const getSlotShift = (start) => {
   return 'OTHER';
 };
 
+const getQuickDateList = (selectedDateStr) => {
+  const todayStr = getLocalDateValue();
+  const selected = new Date(`${selectedDateStr || todayStr}T12:00:00`);
+  const today = new Date(`${todayStr}T12:00:00`);
+  
+  const diffDays = Math.round((selected.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  
+  let startOffset = 0;
+  if (diffDays > 2) {
+    startOffset = diffDays - 2;
+  }
+  if (startOffset < 0) startOffset = 0;
+  
+  const list = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today.getTime());
+    d.setDate(today.getDate() + startOffset + i);
+    const full = getLocalDateValue(d);
+    const dateLabel = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+    const weekday = d.toLocaleDateString('vi-VN', { weekday: 'short' });
+    const weekdayLong = d.toLocaleDateString('vi-VN', { weekday: 'long' });
+    
+    let title = weekday;
+    if (full === todayStr) {
+      title = 'Hôm nay';
+    } else {
+      const tomorrow = new Date(today.getTime());
+      tomorrow.setDate(today.getDate() + 1);
+      if (full === getLocalDateValue(tomorrow)) {
+        title = 'Ngày mai';
+      }
+    }
+    
+    list.push({
+      full,
+      label: `${title} (${dateLabel})`,
+      shortLabel: `${dateLabel}`,
+      title,
+      weekdayLong,
+      isSelected: full === selectedDateStr
+    });
+  }
+  return { list, isNotToday: diffDays > 0, todayStr };
+};
+
 export default function FieldDetail({ sanId: propSanId, onBack, user, setUser }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id: urlSanId } = useParams();
   
   const currentSanId = Number(urlSanId || propSanId || sessionStorage.getItem('activeSanId') || 1);
 
   const dropdownRef = useRef(null);
+  const datePickerRef = useRef(null);
   const [sanInfo, setSanInfo] = useState(null);
   const [timeSlotList, setTimeSlotList] = useState([]);
   const [pageError, setPageError] = useState('');
@@ -47,7 +94,10 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   
-  const [selectedDate, setSelectedDate] = useState(() => getLocalDateValue());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return location.state?.selectedDate || new URLSearchParams(window.location.search).get('date') || getLocalDateValue();
+  });
+  const quickDateInfo = useMemo(() => getQuickDateList(selectedDate), [selectedDate]);
   const [selectedSlots, setSelectedSlots] = useState([]);
   const [selectedShift, setSelectedShift] = useState('ALL');
   
@@ -565,29 +615,54 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
               {/* CHỌN NGÀY ĐÁ */}
               <div className="mb-5">
-                <div className="text-xs font-bold uppercase text-slate-400 mb-2">CHỌN NGÀY ĐÁ</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>CHỌN NGÀY ĐÁ</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {quickDateInfo.isNotToday && (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectDate(quickDateInfo.todayStr)}
+                        className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition"
+                      >
+                        ↩ Về Hôm nay
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try { datePickerRef.current?.showPicker(); } catch (e) { datePickerRef.current?.focus(); }
+                      }}
+                      className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <span>Chọn lịch 📅</span>
+                    </button>
+                    <input 
+                      ref={datePickerRef}
+                      type="date"
+                      value={selectedDate}
+                      min={getLocalDateValue()}
+                      onChange={(e) => handleSelectDate(e.target.value)}
+                      className="sr-only"
+                    />
+                  </div>
+                </div>
                 <div className="grid grid-cols-6 gap-2">
-                  {Array.from({ length: 6 }, (_, index) => {
-                    const date = new Date(`${getLocalDateValue()}T12:00:00`);
-                    date.setDate(date.getDate() + index);
-                    const full = getLocalDateValue(date);
-                    const dateLabel = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-                    const weekday = date.toLocaleDateString('vi-VN', { weekday: 'long' });
-                    const day = index === 0 ? 'HÔM NAY' : index === 1 ? 'NGÀY MAI' : weekday.toUpperCase();
-                    return { day, date: dateLabel, full, label: weekday };
-                  }).map((d) => (
+                  {quickDateInfo.list.slice(0, 6).map((d) => (
                     <button
                       key={d.full}
                       onClick={() => handleSelectDate(d.full)}
                       className={`p-3 rounded-xl border text-center transition ${
-                        selectedDate === d.full 
+                        d.isSelected 
                           ? 'bg-emerald-700 text-white border-emerald-700 font-extrabold shadow-md' 
                           : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
                       }`}
                     >
-                      <div className="text-[10px] opacity-80 uppercase">{d.day}</div>
-                      <div className="text-base font-black my-0.5">{d.date}</div>
-                      <div className="text-[10px] opacity-90">{d.label}</div>
+                      <div className="text-[10px] opacity-80 uppercase">{d.title}</div>
+                      <div className="text-base font-black my-0.5">{d.shortLabel}</div>
+                      <div className="text-[10px] opacity-90">{d.weekdayLong}</div>
                     </button>
                   ))}
                 </div>
