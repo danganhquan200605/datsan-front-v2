@@ -1049,14 +1049,6 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                 >
                   {isSubmitting ? 'Đang gửi...' : 'Gửi mã OTP'}
                 </button>
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-left">
-                  <div className="text-[11px] font-bold text-slate-500 mb-1.5">💡 Số thử nghiệm có sẵn (OTP: 123456):</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button type="button" onClick={() => setPhoneNumber('0912345678')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-emerald-700 hover:bg-emerald-50">0912345678</button>
-                    <button type="button" onClick={() => setPhoneNumber('0905123456')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-slate-700 hover:bg-slate-100">0905123456 (Khách)</button>
-                    <button type="button" onClick={() => setPhoneNumber('0905888999')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-blue-700 hover:bg-blue-50">0905888999 (Chủ sân)</button>
-                  </div>
-                </div>
               </form>
             ) : (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
@@ -1067,7 +1059,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     maxLength={8} 
                     value={otpCode} 
                     onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} 
-                    placeholder="Nhập 123456" 
+                    placeholder="Nhập mã OTP 6 chữ số" 
                     className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-lg font-black focus:outline-none focus:ring-2 focus:ring-emerald-500" 
                     required 
                   />

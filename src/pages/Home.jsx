@@ -692,26 +692,18 @@ export default function Home() {
             {loginStep === 1 ? (
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <label className="block text-xs font-bold text-slate-700">Số điện thoại
-                  <input type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value.replace(/[^\d+ ]/g, ''))} placeholder="0912345678" className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" required />
+                  <input type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value.replace(/[^\d+ ]/g, ''))} placeholder="Nhập số điện thoại (ví dụ: 0905123456)" className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" required />
                 </label>
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-left">
-                  <div className="text-[11px] font-bold text-slate-500 mb-1.5">💡 Số thử nghiệm có sẵn (OTP: 123456):</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button type="button" onClick={() => setPhoneNumber('0912345678')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-emerald-700 hover:bg-emerald-50">0912345678</button>
-                    <button type="button" onClick={() => setPhoneNumber('0905123456')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-slate-700 hover:bg-slate-100">0905123456 (Khách)</button>
-                    <button type="button" onClick={() => setPhoneNumber('0905888999')} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] font-bold text-blue-700 hover:bg-blue-50">0905888999 (Chủ sân)</button>
-                  </div>
-                </div>
                 {loginError && <p role="alert" className="text-xs text-rose-600">{loginError}</p>}
-                <button disabled={isSubmitting} className="w-full py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl disabled:opacity-50">{isSubmitting ? 'Đang gửi...' : 'Gửi mã OTP'}</button>
+                <button disabled={isSubmitting} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl disabled:opacity-50 transition">{isSubmitting ? 'Đang gửi...' : 'Gửi mã OTP'}</button>
               </form>
             ) : (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <label className="block text-xs font-bold text-slate-700">Mã OTP (Thử nghiệm: 123456)
-                  <input type="text" inputMode="numeric" maxLength={8} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} placeholder="123456" className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-sm" required />
+                <label className="block text-xs font-bold text-slate-700">Mã OTP
+                  <input type="text" inputMode="numeric" maxLength={8} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ''))} placeholder="Nhập mã OTP 6 chữ số" className="mt-1.5 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center tracking-widest text-sm" required />
                 </label>
                 {loginError && <p role="alert" className="text-xs text-rose-600">{loginError}</p>}
-                <button disabled={isSubmitting} className="w-full py-3 bg-emerald-600 text-white font-bold text-sm rounded-xl disabled:opacity-50">{isSubmitting ? 'Đang xác minh...' : 'Xác nhận đăng nhập'}</button>
+                <button disabled={isSubmitting} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl disabled:opacity-50 transition">{isSubmitting ? 'Đang xác minh...' : 'Xác nhận đăng nhập'}</button>
                 <button type="button" onClick={() => { setLoginStep(1); setLoginError(''); }} className="w-full text-xs text-emerald-700">Đổi số điện thoại</button>
               </form>
             )}
