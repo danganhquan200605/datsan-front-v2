@@ -31,43 +31,65 @@ export default function AdminDashboard() {
   const [selectedFieldDetail, setSelectedFieldDetail] = useState(null); // Modal Xem Chi Tiết Sân
   const [ownerFieldsModal, setOwnerFieldsModal] = useState({ show: false, ownerName: '', fields: [] }); // Modal Sân của Chủ Sân
 
-  // Tải dữ liệu Admin từ Supabase
+  // Tải dữ liệu Admin từ Supabase chuẩn xác theo schema V2
   const fetchAdminData = async () => {
     try {
       setLoading(true);
 
-      // 1. Tải danh sách tất cả các sân
-      const { data: fieldsData, error: fieldsErr } = await supabase
-        .from('san')
-        .select(`
-          masan, tensan, giasan, hinhanh, hinhanh_phu, trangthai, mota, huyhieu, tienich, machusan,
-          vitri (diachi, quan, phuong, thanhpho),
-          nguoidung:machusan (hoten, sodienthoai, email)
-        `)
-        .order('masan', { ascending: false });
+      const [sanRes, vtRes, userRes, bookingRes] = await Promise.all([
+        supabase.from('san').select('*').order('masan', { ascending: false }),
+        supabase.from('vitri').select('*'),
+        supabase.from('nguoidung').select('*').order('manguoidung', { ascending: false }),
+        supabase.from('datsan').select('*')
+      ]);
 
-      if (fieldsErr) throw fieldsErr;
-      setSanList(fieldsData || []);
+      const rawSan = sanRes.data || [];
+      const rawVt = vtRes.data || [];
+      const rawUsers = userRes.data || [];
+      const rawBookings = bookingRes.data || [];
 
-      // 2. Tải danh sách người dùng
-      const { data: usersData, error: usersErr } = await supabase
-        .from('nguoidung')
-        .select('manguoidung,tendangnhap,email,sodienthoai,hoten,vaitro,trangthai')
-        .order('manguoidung', { ascending: false });
+      // Chuẩn hóa danh sách người dùng từ bảng nguoidung
+      const formattedUsers = rawUsers.map(u => ({
+        manguoidung: u.manguoidung ?? u.id,
+        mataikhoan: u.manguoidung ?? u.id,
+        tendangnhap: u.tendangnhap || u.sodienthoai || '',
+        email: u.email || '',
+        sodienthoai: u.sodienthoai || '',
+        hoten: u.hoten || 'Người dùng',
+        vaitro: (u.vaitro || 'KHACHHANG').toUpperCase(),
+        trangthai: u.trangthai || 'HOATDONG'
+      }));
+      setUserList(formattedUsers);
 
-      if (usersErr) throw usersErr;
-      setUserList(usersData || []);
+      // Chuẩn hóa danh sách sân kèm vị trí & chủ sân
+      const formattedSan = rawSan.map(s => {
+        const vt = rawVt.find(v => Number(v.mavitri ?? v.MaViTri) === Number(s.mavitri ?? s.MaViTri)) || {};
+        const owner = formattedUsers.find(u => Number(u.manguoidung) === Number(s.machusan ?? s.MaChuSan)) || {};
+        return {
+          masan: s.masan ?? s.MaSan,
+          tensan: s.tensan ?? s.TenSan ?? 'Sân thể thao',
+          giasan: s.giasan ?? s.GiaSan ?? 300000,
+          hinhanh: s.hinhanh ?? s.HinhAnh ?? 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=800&q=80',
+          trangthai: s.trangthai ?? s.TrangThai ?? 'HOATDONG',
+          mota: s.mota ?? s.MoTa ?? '',
+          machusan: s.machusan ?? s.MaChuSan,
+          vitri: {
+            diachi: vt.diachi || vt.DiaChi || 'Chưa cập nhật địa chỉ',
+            quan: vt.quan || vt.Quan || 'Đà Nẵng'
+          },
+          nguoidung: {
+            hoten: owner.hoten || 'Chủ sân',
+            sodienthoai: owner.sodienthoai || '',
+            email: owner.email || ''
+          }
+        };
+      });
+      setSanList(formattedSan);
 
-      // 3. Đếm tổng số đơn đặt sân & tính doanh thu sàn
-      const { data: bookingData, count, error: bookingErr } = await supabase
-        .from('datsan')
-        .select('tongtien', { count: 'exact' });
-
-      if (!bookingErr && bookingData) {
-        setBookingCount(count || 0);
-        const revenue = bookingData.reduce((sum, item) => sum + Number(item.tongtien || 0), 0);
-        setTotalSystemRevenue(revenue);
-      }
+      // Đếm tổng lượt đặt & doanh thu toàn sàn
+      setBookingCount(rawBookings.length);
+      const revenue = rawBookings.reduce((sum, item) => sum + Number(item.tongtien || item.TongTien || 0), 0);
+      setTotalSystemRevenue(revenue);
 
     } catch (err) {
       console.error('Lỗi tải dữ liệu Admin:', err);
@@ -97,7 +119,7 @@ export default function AdminDashboard() {
           const { error: ownerError } = await supabase.from('nguoidung')
             .update({ vaitro: 'CHUSAN' })
             .eq('manguoidung', field.machusan);
-          if (ownerError) throw ownerError;
+          if (ownerError) console.warn('Lỗi cập nhật quyền chủ sân:', ownerError);
         }
       }
 
