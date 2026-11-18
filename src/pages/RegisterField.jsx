@@ -173,10 +173,23 @@ export default function RegisterField() {
       const maSanCreated = newSan.masan || newSan.MaSan;
 
       const defaultSlots = [
-        { giobatdau: '16:00:00', gioketthuc: '17:30:00' },
-        { giobatdau: '17:30:00', gioketthuc: '19:00:00' },
-        { giobatdau: '19:00:00', gioketthuc: '20:30:00' },
-        { giobatdau: '20:30:00', gioketthuc: '22:00:00' }
+        // Ca Sáng (07:00 - 11:00)
+        { giobatdau: '07:00:00', gioketthuc: '08:00:00' },
+        { giobatdau: '08:00:00', gioketthuc: '09:00:00' },
+        { giobatdau: '09:00:00', gioketthuc: '10:00:00' },
+        { giobatdau: '10:00:00', gioketthuc: '11:00:00' },
+        // Ca Chiều (13:00 - 17:00)
+        { giobatdau: '13:00:00', gioketthuc: '14:00:00' },
+        { giobatdau: '14:00:00', gioketthuc: '15:00:00' },
+        { giobatdau: '15:00:00', gioketthuc: '16:00:00' },
+        { giobatdau: '16:00:00', gioketthuc: '17:00:00' },
+        // Ca Tối (17:00 - 23:00)
+        { giobatdau: '17:00:00', gioketthuc: '18:00:00' },
+        { giobatdau: '18:00:00', gioketthuc: '19:00:00' },
+        { giobatdau: '19:00:00', gioketthuc: '20:00:00' },
+        { giobatdau: '20:00:00', gioketthuc: '21:00:00' },
+        { giobatdau: '21:00:00', gioketthuc: '22:00:00' },
+        { giobatdau: '22:00:00', gioketthuc: '23:00:00' }
       ];
 
       const slotsToInsert = defaultSlots.map(s => ({

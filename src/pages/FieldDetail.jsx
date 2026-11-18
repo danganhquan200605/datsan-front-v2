@@ -23,6 +23,14 @@ const getSlotDurationHours = (start, end) => {
   return minutes / 60;
 };
 
+const getSlotShift = (start) => {
+  const hour = Number(String(start).slice(0, 2));
+  if (hour >= 7 && hour < 11) return 'MORNING';
+  if (hour >= 13 && hour < 17) return 'AFTERNOON';
+  if (hour >= 17 && hour < 23) return 'EVENING';
+  return 'OTHER';
+};
+
 export default function FieldDetail({ sanId: propSanId, onBack, user, setUser }) {
   const navigate = useNavigate();
   const { id: urlSanId } = useParams();
@@ -41,6 +49,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateValue());
   const [selectedSlots, setSelectedSlots] = useState([]);
+  const [selectedShift, setSelectedShift] = useState('ALL');
   
   // Login Modal States
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -130,7 +139,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
           .single(),
           supabase.from('vitri').select('*'),
           supabase.from('loaisan').select('*'),
-          supabase.from('khunggio').select('*').order('makhunggio')
+          supabase.from('khunggio').select('*').eq('masan', currentSanId).order('makhunggio')
         ]);
         const failedResult = [sanResult, vtResult, lsResult, slotResult].find((result) => result.error);
         if (failedResult) throw failedResult.error;
@@ -222,6 +231,9 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   };
 
   const currentDynamicSlots = getCalculatedSlots();
+  const filteredDynamicSlots = selectedShift === 'ALL'
+    ? currentDynamicSlots
+    : currentDynamicSlots.filter(s => getSlotShift(s.start) === selectedShift);
 
   const handleToggleSlot = (slot) => {
     const isExist = selectedSlots.some(s => s.id === slot.id);
@@ -302,6 +314,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
         racketTennis: false
       });
       fetchBookedSlots();
+      navigate('/profile');
     } catch (e) {
       alert('Lỗi đặt sân: ' + e.message);
     } finally {
@@ -581,11 +594,36 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
               </div>
 
               {/* PHÂN LOẠI SÂN TỪ CSDL */}
-              <div className="mb-6 flex items-center gap-2">
+              <div className="mb-4 flex items-center gap-2">
                 <span className="text-xs font-bold uppercase text-slate-400">Loại sân:</span>
                 <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold">
                   {sanInfo?.LoaiSanText}
                 </span>
+              </div>
+
+              {/* CHỌN CA THI ĐẤU */}
+              <div className="mb-5">
+                <div className="text-xs font-bold uppercase text-slate-400 mb-2">CHỌN CA THI ĐẤU</div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'ALL', label: 'Tất cả (14 ca)' },
+                    { id: 'MORNING', label: 'Ca Sáng (07:00 - 11:00)' },
+                    { id: 'AFTERNOON', label: 'Ca Chiều (13:00 - 17:00)' },
+                    { id: 'EVENING', label: 'Ca Tối (17:00 - 23:00)' },
+                  ].map((shift) => (
+                    <button
+                      key={shift.id}
+                      onClick={() => setSelectedShift(shift.id)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                        selectedShift === shift.id
+                          ? 'bg-emerald-700 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {shift.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* GRID KHUNG GIỜ */}
@@ -596,7 +634,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                 </div>
               ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {currentDynamicSlots.map((slot) => {
+                {filteredDynamicSlots.map((slot) => {
                     const isSelected = selectedSlots.some(s => s.id === slot.id);
                     return (
                         <div key={slot.id} className={`p-3 rounded-xl border flex flex-col justify-between transition ${

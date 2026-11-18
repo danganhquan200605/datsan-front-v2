@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Search, MapPin, Calendar, Clock, ChevronDown, Bell, User, 
@@ -28,6 +28,14 @@ const getSlotDurationHours = (start, end) => {
   let minutes = toMinutes(end) - toMinutes(start);
   if (minutes <= 0) minutes += 24 * 60;
   return minutes / 60;
+};
+
+const getSlotShift = (start) => {
+  const hour = Number(String(start).slice(0, 2));
+  if (hour >= 7 && hour < 11) return 'MORNING';
+  if (hour >= 13 && hour < 17) return 'AFTERNOON';
+  if (hour >= 17 && hour < 23) return 'EVENING';
+  return 'OTHER';
 };
 
 export default function Home() {
@@ -173,19 +181,22 @@ export default function Home() {
     return isBookedInDB ? 'DADAT' : 'TRONG';
   };
 
+  const displayedSlots = useMemo(() => {
+    if (selectedTimeSlot === 'ALL') return timeSlotList;
+    return timeSlotList.filter(s => getSlotShift(s.start) === selectedTimeSlot);
+  }, [timeSlotList, selectedTimeSlot]);
+
   const filteredSan = sanList.filter((san) => {
     const matchLoaiSan = selectedMaLoaiSan === 0 || san.MaLoaiSan === selectedMaLoaiSan;
     const matchQuan = !selectedQuan || san.ViTri.Quan.toLowerCase().includes(selectedQuan.toLowerCase());
     const matchSearch = !searchTerm || 
       san.TenSan.toLowerCase().includes(searchTerm.toLowerCase()) ||
       san.ViTri.DiaChi.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchTimeSlot = selectedTimeSlot === 'ALL' || (() => {
-      const vSlot = allKhungGio.find((kg) => 
-        Number(kg.masan || kg.MaSan) === Number(san.MaSan) &&
-        `${String(kg.giobatdau || kg.GioBatDau).slice(0, 5)}-${String(kg.gioketthuc || kg.GioKetThuc).slice(0, 5)}` === selectedTimeSlot
-      );
-      return vSlot ? getSlotStatus(san.MaSan, vSlot.makhunggio || vSlot.MaKhungGio) === 'TRONG' : false;
-    })();
+    const matchTimeSlot = selectedTimeSlot === 'ALL' || allKhungGio.some((kg) => 
+      Number(kg.masan || kg.MaSan) === Number(san.MaSan) &&
+      getSlotShift(String(kg.giobatdau || kg.GioBatDau).slice(0, 5)) === selectedTimeSlot &&
+      getSlotStatus(san.MaSan, kg.makhunggio || kg.MaKhungGio) === 'TRONG'
+    );
     return matchLoaiSan && matchQuan && matchSearch && matchTimeSlot;
   });
 
@@ -268,6 +279,7 @@ export default function Home() {
       alert('Tạo đơn đặt sân thành công!');
       setBookingSuccessModal(false);
       fetchData();
+      navigate('/profile');
     } catch (err) {
       console.error('Lỗi khi lưu đơn:', err);
       alert('Lỗi đặt sân: ' + (err.message || 'Lỗi hệ thống'));
@@ -368,8 +380,10 @@ export default function Home() {
                   onChange={(e) => setSelectedTimeSlot(e.target.value)}
                   className="w-full bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
                 >
-                  <option value="ALL">Tất cả khung giờ</option>
-                  {timeSlotList.map((slot) => <option key={slot.id} value={slot.id}>{slot.label}</option>)}
+                  <option value="ALL">Tất cả khung giờ (07:00 - 23:00)</option>
+                  <option value="MORNING">Ca Sáng (07:00 - 11:00)</option>
+                  <option value="AFTERNOON">Ca Chiều (13:00 - 17:00)</option>
+                  <option value="EVENING">Ca Tối (17:00 - 23:00)</option>
                 </select>
               </div>
             </div>
@@ -417,8 +431,8 @@ export default function Home() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[11px]">
                     <th className="py-3 px-4 w-72">Sân Thi Đấu & Địa Chỉ</th>
-                    {timeSlotList.map(s => (
-                      <th key={s.id} className="py-3 px-3 text-center w-48">{s.label}</th>
+                    {displayedSlots.map(s => (
+                      <th key={s.id} className="py-3 px-3 text-center min-w-[125px]">{s.label}</th>
                     ))}
                   </tr>
                 </thead>
@@ -434,7 +448,7 @@ export default function Home() {
                         </div>
                         <div className="text-[11px] text-slate-400">📍 {san.ViTri.DiaChi}, Q. {san.ViTri.Quan}</div>
                       </td>
-                      {timeSlotList.map((slot) => {
+                      {displayedSlots.map((slot) => {
                         const vSlot = allKhungGio.find((kg) => 
                           Number(kg.masan || kg.MaSan) === Number(san.MaSan) &&
                           String(kg.giobatdau || kg.GioBatDau).slice(0, 5) === slot.start &&
@@ -445,23 +459,24 @@ export default function Home() {
                         const isAvailable = Boolean(slotId && status === 'TRONG');
                         let btnClass = 'bg-slate-100 text-slate-400 cursor-not-allowed';
                         let labelText = 'Đã cọc';
+                        const hourlyPriceK = Math.round(Number(san.GiaSan || 300000) / 1000);
                         if (isAvailable) {
                           if (slot.isGold) {
                             btnClass = 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold shadow-sm';
-                            labelText = `${Math.round(san.GiaSan * getSlotDurationHours(slot.start, slot.end) / 1000)}k • HOT`;
+                            labelText = `${hourlyPriceK}k • HOT`;
                           } else {
                             btnClass = 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm';
-                            labelText = `${Math.round(san.GiaSan * getSlotDurationHours(slot.start, slot.end) / 1000)}k • Đặt ngay`;
+                            labelText = `${hourlyPriceK}k • Đặt ngay`;
                           }
                         }
                         return (
-                          <td key={slot.id} className="py-4 px-2 text-center">
+                          <td key={slot.id} className="py-3 px-1.5 text-center">
                             <button
                               disabled={!isAvailable}
                               onClick={() => vSlot && handleQuickBook(san, { ...slot, id: slotId })}
-                              className={`w-full py-2.5 rounded-xl text-[11px] transition ${btnClass}`}
+                              className={`w-full py-2 px-1 rounded-xl text-xs transition flex flex-col items-center justify-center ${btnClass}`}
                             >
-                              <div>{slot.start} - {slot.end}</div>
+                              <div className="font-extrabold text-[11px] leading-tight">{slot.label}</div>
                               <div className="text-[10px] opacity-90">{labelText}</div>
                             </button>
                           </td>
