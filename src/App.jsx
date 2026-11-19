@@ -41,6 +41,7 @@ function App() {
         {/* 1. Luồng Khách Hàng (Customer Flow) */}
         <Route path="/" element={<Home user={currentUser} setUser={setCurrentUser} />} />
         <Route path="/field/:id" element={<FieldDetail user={currentUser} setUser={setCurrentUser} />} />
+        <Route path="/san/:id" element={<FieldDetail user={currentUser} setUser={setCurrentUser} />} />
         <Route path="/checkout" element={<Checkout user={currentUser} setUser={setCurrentUser} />} />
         <Route path="/ticket/:id" element={<Ticket user={currentUser} setUser={setCurrentUser} />} />
         <Route path="/login" element={<Login user={currentUser} setUser={setCurrentUser} />} />

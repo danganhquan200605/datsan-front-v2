@@ -58,6 +58,7 @@ export default function UserProfile() {
           ngaysudung,
           tongtien,
           trangthai,
+          ghichu,
           san (
             masan,
             tensan,
@@ -172,27 +173,62 @@ export default function UserProfile() {
     }
   };
 
+  const parseBookingMeta = (ghichu) => {
+    try {
+      return JSON.parse(ghichu || '{}');
+    } catch (e) {
+      return {};
+    }
+  };
+
   const filteredBookings = bookingList.filter((b) => {
     if (activeTab === 'ALL') return true;
-    if (activeTab === 'CHOXACNHAN') return b.trangthai === 'CHOXACNHAN';
-    if (activeTab === 'HOANTHANH') return b.trangthai === 'HOANTHANH' || b.trangthai === 'DACANCOC';
-    if (activeTab === 'DAHUY') return b.trangthai === 'DAHUY';
+    if (activeTab === 'PENDING') return b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN' || b.trangthai === 'DA_THANH_TOAN';
+    if (activeTab === 'HOANTHANH') return b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH' || b.trangthai === 'DACANCOC';
+    if (activeTab === 'DAHUY') return b.trangthai === 'DA_HUY' || b.trangthai === 'DAHUY';
     return true;
   });
 
-  const getStatusBadge = (trangThai) => {
-    switch (trangThai) {
-      case 'HOANTHANH':
-        return <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Hoàn thành</span>;
-      case 'DACANCOC':
-        return <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Đã cọc</span>;
-      case 'CHOXACNHAN':
-        return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Chờ xác nhận</span>;
-      case 'DAHUY':
-        return <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> Đã hủy</span>;
-      default:
-        return <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-full">{trangThai}</span>;
+  const getStatusBadge = (item) => {
+    const trangThai = item.trangthai;
+    const meta = parseBookingMeta(item.ghichu);
+    const method = meta.paymentMethod || 'QR';
+
+    if (trangThai === 'DA_THANH_TOAN') {
+      return (
+        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1 shadow-sm">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> ĐÃ THANH TOÁN 100% (QR)
+        </span>
+      );
     }
+    if (trangThai === 'CHO_THI_DAU') {
+      return (
+        <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1 shadow-sm">
+          <Clock className="w-3.5 h-3.5 text-blue-600" /> TIỀN MẶT (Trả tại sân)
+        </span>
+      );
+    }
+    if (trangThai === 'HOAN_THANH' || trangThai === 'HOANTHANH') {
+      return (
+        <span className="px-2.5 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-full inline-flex items-center gap-1 shadow-sm">
+          <CheckCircle2 className="w-3.5 h-3.5 text-white" /> HOÀN THÀNH {method === 'TIEN_MAT' ? '(ĐÃ THU TIỀN MẶT)' : '(QR)'}
+        </span>
+      );
+    }
+    if (trangThai === 'DA_HUY' || trangThai === 'DAHUY') {
+      return (
+        <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1 shadow-sm">
+          <XCircle className="w-3.5 h-3.5 text-rose-600" /> ĐÃ HỦY / BÙNG TRẬN
+        </span>
+      );
+    }
+    if (trangThai === 'DACANCOC') {
+      return <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Đã xác nhận</span>;
+    }
+    if (trangThai === 'CHOXACNHAN') {
+      return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[11px] font-bold rounded-full inline-flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Chờ xác nhận</span>;
+    }
+    return <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-full">{trangThai}</span>;
   };
 
   const userRole = user?.VaiTro || user?.vaitro || 'KHACHHANG';
@@ -342,7 +378,7 @@ export default function UserProfile() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900">Lịch Sử Đặt Sân</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Theo dõi danh sách sân đã cọc và thực hiện đánh giá sau khi sử dụng</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Theo dõi danh sách sân đã đặt và thực hiện đánh giá sau khi sử dụng</p>
                 </div>
               </div>
 
@@ -350,8 +386,8 @@ export default function UserProfile() {
               <div className="flex items-center gap-2 my-5 overflow-x-auto pb-1">
                 {[
                   { key: 'ALL', label: 'Tất cả' },
-                  { key: 'CHOXACNHAN', label: 'Chờ xác nhận' },
-                  { key: 'HOANTHANH', label: 'Đã cọc / Hoàn thành' },
+                  { key: 'PENDING', label: 'Chờ thi đấu / Thanh toán' },
+                  { key: 'HOANTHANH', label: 'Đã hoàn thành' },
                   { key: 'DAHUY', label: 'Đã hủy' }
                 ].map((tab) => (
                   <button
@@ -384,7 +420,7 @@ export default function UserProfile() {
                     const sanInfo = item.san || {};
                     const viTriInfo = sanInfo.vitri || {};
                     const isEvaluated = evaluatedBookings.includes(item.madatsan);
-                    const isCompleted = item.trangthai === 'HOANTHANH' || item.trangthai === 'DACANCOC';
+                    const isCompleted = item.trangthai === 'HOAN_THANH' || item.trangthai === 'HOANTHANH' || item.trangthai === 'DACANCOC' || item.trangthai === 'DA_THANH_TOAN';
 
                     return (
                       <div key={item.madatsan} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 hover:border-slate-300 transition">
@@ -404,7 +440,7 @@ export default function UserProfile() {
                               </p>
                             </div>
                           </div>
-                          <div>{getStatusBadge(item.trangthai)}</div>
+                          <div>{getStatusBadge(item)}</div>
                         </div>
 
                         <div className="pt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">

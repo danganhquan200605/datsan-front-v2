@@ -28,6 +28,12 @@ export default function AdminDashboard() {
   const [userList, setUserList] = useState([]);
   const [bookingCount, setBookingCount] = useState(0);
   const [totalSystemRevenue, setTotalSystemRevenue] = useState(0);
+  const [revenueStats, setRevenueStats] = useState({
+    totalGMV: 0,
+    qrCommission: 0,
+    cashCommissionSettled: 0,
+    cashCommissionPending: 0
+  });
 
   // States Tìm Kiếm & Modal
   const [searchTerm, setSearchTerm] = useState('');
@@ -125,10 +131,47 @@ export default function AdminDashboard() {
       });
       setSanList(formattedSan);
 
-      // Đếm tổng lượt đặt & doanh thu toàn sàn
+      // Đếm tổng lượt đặt & bóc tách doanh thu hoa hồng sàn (10%)
       setBookingCount(rawBookings.length);
-      const revenue = rawBookings.reduce((sum, item) => sum + Number(item.tongtien || item.TongTien || 0), 0);
-      setTotalSystemRevenue(revenue);
+      
+      const parseMeta = (ghichu) => {
+        try { return JSON.parse(ghichu || '{}'); } catch { return {}; }
+      };
+
+      let totalGMV = 0;
+      let qrCommission = 0;
+      let cashCommissionSettled = 0;
+      let cashCommissionPending = 0;
+
+      rawBookings.forEach(item => {
+        const amount = Number(item.tongtien || item.TongTien || 0);
+        const status = item.trangthai || item.TrangThai;
+        const meta = parseMeta(item.ghichu || item.GhiChu);
+        const method = meta.paymentMethod || (status === 'CHO_THI_DAU' ? 'TIEN_MAT' : 'QR');
+        const commission = Number(meta.commissionAmount || Math.round(amount * 0.1));
+
+        if (status !== 'DA_HUY' && status !== 'DAHUY') {
+          totalGMV += amount;
+        }
+
+        if (method === 'QR' && (status === 'DA_THANH_TOAN' || status === 'HOAN_THANH' || status === 'HOANTHANH' || status === 'DACANCOC')) {
+          qrCommission += commission;
+        } else if (method === 'TIEN_MAT') {
+          if (meta.commissionStatus === 'DA_QUYET_TOAN') {
+            cashCommissionSettled += commission;
+          } else if (meta.commissionStatus === 'CHO_CHUSAN_NOP') {
+            cashCommissionPending += commission;
+          }
+        }
+      });
+
+      setTotalSystemRevenue(totalGMV);
+      setRevenueStats({
+        totalGMV,
+        qrCommission,
+        cashCommissionSettled,
+        cashCommissionPending
+      });
 
     } catch (err) {
       console.error('Lỗi tải dữ liệu Admin:', err);
@@ -353,17 +396,28 @@ export default function AdminDashboard() {
           {/* Ô THỐNG KÊ DOANH THU ADMIN/HOA HỒNG SÀN */}
           <div className="bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-2xl p-5 shadow-md border border-emerald-900 col-span-1 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Doanh Thu Thu Từ Chủ Sân</span>
+              <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Doanh Thu Hoa Hồng (10%)</span>
               <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
             <div className="text-xl font-black text-amber-400">
-              {(totalSystemRevenue * 0.1).toLocaleString('vi-VN')} đ
+              {(revenueStats.qrCommission + revenueStats.cashCommissionSettled).toLocaleString('vi-VN')} đ
             </div>
-            <p className="text-[10px] text-emerald-200/80 mt-1">
-              Phí hoa hồng dịch vụ 10% (Tổng GD: {totalSystemRevenue.toLocaleString('vi-VN')} đ)
-            </p>
+            <div className="mt-2 pt-2 border-t border-emerald-700/50 space-y-1 text-[10px]">
+              <div className="flex justify-between text-emerald-200">
+                <span>• Đã thu tự động (QR):</span>
+                <span className="font-bold text-white">{revenueStats.qrCommission.toLocaleString('vi-VN')} đ</span>
+              </div>
+              <div className="flex justify-between text-emerald-200">
+                <span>• Chủ sân đã nộp (Tiền mặt):</span>
+                <span className="font-bold text-white">{revenueStats.cashCommissionSettled.toLocaleString('vi-VN')} đ</span>
+              </div>
+              <div className="flex justify-between text-amber-300 font-bold">
+                <span>• Sổ nợ chủ sân chưa nộp:</span>
+                <span>{revenueStats.cashCommissionPending.toLocaleString('vi-VN')} đ</span>
+              </div>
+            </div>
           </div>
         </div>
 

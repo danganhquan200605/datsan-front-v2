@@ -58,6 +58,13 @@ export async function verifyPhoneOtp(phone, token) {
   return apiRequest('/api/auth/verify', { method: 'POST', body: JSON.stringify({ phone, token }) });
 }
 
+export async function settleOwnerBooking(action, bookingId, ownerId) {
+  return apiRequest('/api/owner/settle-booking', {
+    method: 'POST',
+    body: JSON.stringify({ action, bookingId, ownerId }),
+  });
+}
+
 class ApiQuery {
   constructor(table) {
     this.payload = { table, action: 'select', columns: '*', filters: [] };
@@ -117,13 +124,19 @@ export const supabase = {
       return { data: result.data, error: null };
     } catch (error) { return { data: null, error }; }
   },
-  async createBooking({ masan, date, slotIds, services = {} }) {
+  async createBooking({ masan, date, slotIds, services = {}, paymentMethod = 'QR' }) {
     try {
       const result = await apiRequest('/api/bookings', {
         method: 'POST',
-        body: JSON.stringify({ masan, date, slotIds, services }),
+        body: JSON.stringify({ masan, date, slotIds, services, paymentMethod }),
       });
       return { data: result.data, error: null };
+    } catch (error) { return { data: null, error }; }
+  },
+  async settleOwnerBooking(action, bookingId, ownerId) {
+    try {
+      const result = await settleOwnerBooking(action, bookingId, ownerId);
+      return { data: result, error: null };
     } catch (error) { return { data: null, error }; }
   },
   storage,
