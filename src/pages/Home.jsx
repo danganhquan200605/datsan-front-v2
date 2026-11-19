@@ -357,13 +357,13 @@ export default function Home() {
         <div className="max-w-[1440px] mx-auto text-center">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-200 text-xs font-semibold mb-4 border border-emerald-400/30">
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            Nền tảng giữ chỗ sân trực tiếp theo thời gian thực tại TP. Đà Nẵng
+            Hệ thống đặt sân thể thao trực tuyến tại TP. Đà Nẵng
           </div>
           <h1 className="text-3xl md:text-4xl lg:text-5xl font-black tracking-tight mb-3">
             Đặt Sân Bóng & Sân Thể Thao Dễ Dàng Chỉ Với 3 Bước
           </h1>
           <p className="text-emerald-100/90 text-sm max-w-2xl mx-auto mb-8">
-            Dữ liệu sân bãi, vị trí quận huyện và khung giờ thi đấu được kết nối trực tiếp với CSDL thời gian thực.
+            Tìm kiếm sân bãi, lựa chọn khung giờ thi đấu và giữ chỗ nhanh chóng.
           </p>
           <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-6 text-slate-800">
             <div className="flex items-center gap-2 border-b border-slate-100 pb-4 mb-5 overflow-x-auto">
@@ -515,14 +515,6 @@ export default function Home() {
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
-              <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 mb-1">
-                <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="uppercase tracking-wider">BẢNG KHUNG GIỜ THI ĐẤU</span>
-                <span className="text-slate-300 font-normal">•</span>
-                <span className="font-mono text-slate-600 font-semibold bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                  {clockFormatted}
-                </span>
-              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-xl font-black text-slate-900">Bảng Giờ Thi Đấu Ngày {selectedDate}</h2>
                 <div className="flex items-center gap-1 overflow-x-auto py-1">

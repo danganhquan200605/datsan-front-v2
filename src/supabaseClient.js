@@ -211,3 +211,10 @@ export const supabase = {
     activeChannels.delete(channel);
   },
 };
+
+export async function registerField(fieldData) {
+  return apiRequest('/api/fields/register', {
+    method: 'POST',
+    body: JSON.stringify(fieldData),
+  });
+}

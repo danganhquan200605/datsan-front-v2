@@ -4,7 +4,7 @@ import {
   Building2, MapPin, ChevronLeft, ArrowRight, ShieldCheck, Sparkles, 
   Image as ImageIcon, Tag, CheckSquare, Upload, Loader2, X
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase, registerField } from '../supabaseClient';
 import Header from '../components/Header';
 
 export default function RegisterField() {
@@ -116,9 +116,34 @@ export default function RegisterField() {
       return;
     }
 
+    if (!tenSan || !tenSan.trim()) {
+      alert("Vui lòng nhập tên cụm sân!");
+      return;
+    }
+
     const rawGiaSan = Number(giaSan);
     if (!rawGiaSan || rawGiaSan <= 0) {
       alert("Vui lòng nhập giá thuê hợp lệ!");
+      return;
+    }
+
+    if (!maLoaiSan) {
+      alert("Vui lòng chọn loại sân!");
+      return;
+    }
+
+    if (!quan || !quan.trim()) {
+      alert("Vui lòng chọn Quận / Huyện!");
+      return;
+    }
+
+    if (!phuong || !phuong.trim()) {
+      alert("Vui lòng nhập Phường / Xã!");
+      return;
+    }
+
+    if (!diaChi || !diaChi.trim()) {
+      alert("Vui lòng nhập Địa chỉ chi tiết!");
       return;
     }
 
@@ -127,84 +152,27 @@ export default function RegisterField() {
     try {
       setIsSubmitting(true);
 
-      const { data: newViTri, error: vtErr } = await supabase
-        .from('vitri')
-        .insert([
-          {
-            diachi: diaChi,
-            phuong: phuong || 'Trung tâm',
-            quan: quan,
-            thanhpho: 'Đà Nẵng'
-          }
-        ])
-        .select()
-        .single();
-
-      if (vtErr) throw vtErr;
-      const maViTri = newViTri.mavitri || newViTri.MaViTri;
-
-      const mainImg = hinhanhMain || 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=800&q=80';
-      const subImgs = [hinhanhSub1, hinhanhSub2, hinhanhSub3].filter(Boolean);
-
-      // Thêm thông tin sân (tương thích cả khi DB chưa có các cột mở rộng)
-      const insertPayload = {
-        machusan: userId,
-        maloaisan: Number(maLoaiSan),
-        mavitri: maViTri,
-        tensan: tenSan,
-        mota: moTa || 'Sân bóng chất lượng cao, hệ thống đèn chiếu sáng hiện đại.',
-        giasan: rawGiaSan,
-        hinhanh: mainImg,
-        trangthai: 'CHO_DUYET'
+      const payload = {
+        userId,
+        tenSan: tenSan.trim(),
+        maLoaiSan: Number(maLoaiSan),
+        giaSan: rawGiaSan,
+        moTa: moTa.trim(),
+        hinhanhMain: hinhanhMain.trim(),
+        hinhanhSub1: hinhanhSub1.trim(),
+        hinhanhSub2: hinhanhSub2.trim(),
+        hinhanhSub3: hinhanhSub3.trim(),
+        badges: selectedBadges,
+        amenities: selectedAmenities,
+        quan: quan.trim(),
+        phuong: phuong.trim(),
+        diaChi: diaChi.trim()
       };
 
-      // Đẩy thêm các trường mở rộng nếu người dùng chọn
-      if (subImgs.length > 0) insertPayload.hinhanh_phu = subImgs;
-      if (selectedBadges.length > 0) insertPayload.huyhieu = selectedBadges;
-      if (selectedAmenities.length > 0) insertPayload.tienich = selectedAmenities;
+      await registerField(payload);
 
-      const { data: newSan, error: sanErr } = await supabase
-        .from('san')
-        .insert([insertPayload])
-        .select()
-        .single();
-
-      if (sanErr) throw sanErr;
-      const maSanCreated = newSan.masan || newSan.MaSan;
-
-      const defaultSlots = [
-        // Ca Sáng (07:00 - 11:00)
-        { giobatdau: '07:00:00', gioketthuc: '08:00:00' },
-        { giobatdau: '08:00:00', gioketthuc: '09:00:00' },
-        { giobatdau: '09:00:00', gioketthuc: '10:00:00' },
-        { giobatdau: '10:00:00', gioketthuc: '11:00:00' },
-        // Ca Chiều (13:00 - 17:00)
-        { giobatdau: '13:00:00', gioketthuc: '14:00:00' },
-        { giobatdau: '14:00:00', gioketthuc: '15:00:00' },
-        { giobatdau: '15:00:00', gioketthuc: '16:00:00' },
-        { giobatdau: '16:00:00', gioketthuc: '17:00:00' },
-        // Ca Tối (17:00 - 23:00)
-        { giobatdau: '17:00:00', gioketthuc: '18:00:00' },
-        { giobatdau: '18:00:00', gioketthuc: '19:00:00' },
-        { giobatdau: '19:00:00', gioketthuc: '20:00:00' },
-        { giobatdau: '20:00:00', gioketthuc: '21:00:00' },
-        { giobatdau: '21:00:00', gioketthuc: '22:00:00' },
-        { giobatdau: '22:00:00', gioketthuc: '23:00:00' }
-      ];
-
-      const slotsToInsert = defaultSlots.map(s => ({
-        masan: maSanCreated,
-        giobatdau: s.giobatdau,
-        gioketthuc: s.gioketthuc,
-        trangthai: 'TRONG'
-      }));
-
-      const { error: slotError } = await supabase.from('khunggio').insert(slotsToInsert);
-      if (slotError) throw slotError;
-
-      alert('Đã gửi sân để quản trị viên xét duyệt. Quyền Chủ Sân sẽ được cấp sau khi sân được duyệt.');
+      alert('Đăng ký cụm sân thành công! Hồ sơ đã được gửi đến Ban Quản Trị để phê duyệt.');
       navigate('/');
-
     } catch (err) {
       console.error('Lỗi khi đăng ký sân:', err);
       alert('Đăng ký thất bại: ' + (err.message || 'Lỗi hệ thống'));
@@ -367,7 +335,9 @@ export default function RegisterField() {
               
               {/* Ảnh chính */}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Tải Ảnh Banner Chính *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tải Ảnh Banner Chính <span className="text-slate-400 font-normal">(Tùy chọn - Tự động gán ảnh HD nếu để trống)</span>
+                </label>
                 <div className="flex items-center gap-3">
                   <label className="flex-1 cursor-pointer bg-slate-50 border border-dashed border-slate-300 hover:border-emerald-500 p-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-slate-600 transition">
                     {uploadingState.main ? <Loader2 className="w-4 h-4 animate-spin text-emerald-600" /> : <Upload className="w-4 h-4 text-emerald-600" />}
@@ -483,12 +453,14 @@ export default function RegisterField() {
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Mô Tả & Chi Tiết Tiện Ích Khác</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Mô Tả & Chi Tiết Tiện Ích Khác <span className="text-slate-400 font-normal">(Tùy chọn)</span>
+                </label>
                 <textarea 
                   rows={3}
                   value={moTa}
                   onChange={(e) => setMoTa(e.target.value)}
-                  placeholder="Mô tả về chất lượng cỏ, dịch vụ căn tin, quy định đặt cọc sân..."
+                  placeholder="Tùy chọn: Nhập giới thiệu về chất lượng sân, dịch vụ tiện ích đi kèm (nếu để trống, hệ thống sẽ tự động gán mô tả tiêu chuẩn)..."
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-500 transition"
                 />
               </div>
@@ -519,13 +491,14 @@ export default function RegisterField() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Phường / Xã</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Phường / Xã *</label>
                 <input 
                   type="text" 
                   value={phuong}
                   onChange={(e) => setPhuong(e.target.value)}
                   placeholder="Ví dụ: Thạch Thang"
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500 transition"
+                  required
                 />
               </div>
 
@@ -546,7 +519,7 @@ export default function RegisterField() {
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>Hình ảnh sẽ được tải trực tiếp lên hệ thống Supabase `san-images`.</span>
+              <span>Hồ sơ đăng ký sân bãi sẽ được Ban Quản Trị xem xét và kích hoạt trong vòng 24 giờ.</span>
             </div>
 
             <button 
