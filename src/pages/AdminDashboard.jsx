@@ -764,9 +764,14 @@ export default function AdminDashboard() {
                                     <div className="flex flex-col items-center">
                                       <span className="font-black text-rose-600 text-xs">{ownerDebt.toLocaleString('vi-VN')} đ</span>
                                       {isOverdueWeek ? (
-                                        <span className="px-2 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded text-[10px] font-black inline-flex items-center gap-1 mt-1 shadow-xs animate-pulse">
-                                          <AlertTriangle className="w-3 h-3 text-rose-600" /> Quá hạn 1 tuần
-                                        </span>
+                                        <div className="flex flex-col items-center">
+                                          <span className="px-2 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded text-[10px] font-black inline-flex items-center gap-1 mt-1 shadow-xs animate-pulse">
+                                            <AlertTriangle className="w-3 h-3 text-rose-600" /> Quá hạn 1 tuần
+                                          </span>
+                                          <span className="text-[10px] text-rose-600 font-bold mt-0.5">
+                                            ✓ Tự động gửi nhắc
+                                          </span>
+                                        </div>
                                       ) : (
                                         <span className="text-[10px] text-amber-700 font-semibold mt-0.5">Trong hạn</span>
                                       )}
@@ -785,10 +790,10 @@ export default function AdminDashboard() {
                                         ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300 ring-2 ring-rose-200 shadow-sm'
                                         : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
                                     }`}
-                                    title="Bấm để gửi thông báo nhắc nợ tới chủ sân"
+                                    title={isOverdueWeek ? "Hệ thống đã tự động gửi nhắc nợ sau 1 tuần. Bấm để gửi nhắc nợ lại lần nữa" : "Gửi thông báo nhắc nợ"}
                                   >
                                     <Bell className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>{ownerDebt > 0 ? 'Nhắc Nợ' : 'Gửi Thông Báo'}</span>
+                                    <span>{ownerDebt > 0 ? (isOverdueWeek ? 'Nhắc Lại' : 'Nhắc Nợ') : 'Gửi Thông Báo'}</span>
                                   </button>
                                 </td>
                               </>
