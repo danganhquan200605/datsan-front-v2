@@ -8,6 +8,11 @@ import {
 import { supabase, settleOwnerBooking, triggerAutoComplete } from '../supabaseClient';
 import Header from '../components/Header';
 
+const getLocalDateValue = (date = new Date()) => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+};
+
 export default function OwnerDashboard() {
   const navigate = useNavigate();
 
@@ -27,9 +32,10 @@ export default function OwnerDashboard() {
   const [sanList, setSanList] = useState([]);
   const [bookingList, setBookingList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const todayStr = getLocalDateValue();
   const [activeTab, setActiveTab] = useState('BOOKINGS'); // BOOKINGS | FIELDS
   const [bookingFilterStatus, setBookingFilterStatus] = useState('ALL');
-  const [dateFilter, setDateFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState(() => todayStr);
   const [shiftFilter, setShiftFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettleModal, setShowSettleModal] = useState(false);
@@ -403,30 +409,31 @@ export default function OwnerDashboard() {
                         type="date" 
                         value={dateFilter} 
                         onChange={e => setDateFilter(e.target.value)} 
-                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs" 
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs" 
                       />
                       <button
-                        onClick={() => {
-                          const today = new Date().toISOString().slice(0, 10);
-                          setDateFilter(today);
-                        }}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition ${
-                          dateFilter === new Date().toISOString().slice(0, 10)
-                            ? 'bg-emerald-600 text-white border-emerald-600'
+                        type="button"
+                        onClick={() => setDateFilter(todayStr)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition flex items-center gap-1 ${
+                          dateFilter === todayStr
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
+                        {dateFilter === todayStr && <Check className="w-3 h-3 text-white" />}
                         Hôm nay
                       </button>
-                      {dateFilter && (
-                        <button
-                          onClick={() => setDateFilter('')}
-                          className="text-[11px] text-slate-400 hover:text-rose-600 font-bold px-1"
-                          title="Xóa lọc ngày"
-                        >
-                          ✕ Xóa
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setDateFilter('')}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                          !dateFilter
+                            ? 'bg-slate-700 text-white border-slate-700 shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        Tất cả ngày
+                      </button>
                     </div>
 
                     <span className="text-slate-300 hidden sm:inline">|</span>
@@ -449,11 +456,11 @@ export default function OwnerDashboard() {
                     </div>
 
                     {/* Nút Đặt lại bộ lọc */}
-                    {(bookingFilterStatus !== 'ALL' || dateFilter || shiftFilter !== 'ALL' || searchQuery) && (
+                    {(bookingFilterStatus !== 'ALL' || dateFilter !== todayStr || shiftFilter !== 'ALL' || searchQuery) && (
                       <button
                         onClick={() => {
                           setBookingFilterStatus('ALL');
-                          setDateFilter('');
+                          setDateFilter(todayStr);
                           setShiftFilter('ALL');
                           setSearchQuery('');
                         }}
