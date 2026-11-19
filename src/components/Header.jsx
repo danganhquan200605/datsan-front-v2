@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
-  Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2, Clock
+  Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2, Clock,
+  Calendar, AlertTriangle, DollarSign, CheckCircle2, X
 } from 'lucide-react';
+import { fetchNotifications, markNotificationAsRead } from '../supabaseClient';
 
 export default function Header({ 
   user, 
@@ -12,6 +14,11 @@ export default function Header({
   setSearchTerm
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [activeToast, setActiveToast] = useState(null);
+  const notifRef = useRef(null);
+  const knownNotifIds = useRef(new Set());
   const navigate = useNavigate();
 
   // Xử lý đăng xuất
@@ -27,6 +34,68 @@ export default function Header({
   // Lấy tên hiển thị & vai trò
   const displayName = user?.HoTen || user?.hoten || 'Tài khoản';
   const userRole = user?.VaiTro || user?.vaitro || 'KHACHHANG';
+  const userId = user?.manguoidung || user?.MaNguoiDung || user?.id;
+
+  // Tải danh sách thông báo
+  const loadNotifications = async () => {
+    if (!userId && userRole !== 'ADMIN') return;
+    try {
+      const data = await fetchNotifications(userId, userRole);
+      const list = Array.isArray(data) ? data : [];
+      
+      // Kiểm tra có thông báo mới tinh chưa đọc để hiển thị Toast realtime
+      if (knownNotifIds.current.size > 0) {
+        const newUnread = list.find(n => !n.dread && !knownNotifIds.current.has(n.mathongbao));
+        if (newUnread) {
+          setActiveToast(newUnread);
+          setTimeout(() => setActiveToast(null), 6000);
+        }
+      }
+      
+      // Cập nhật tập ID đã biết
+      list.forEach(n => knownNotifIds.current.add(n.mathongbao));
+      setNotifications(list);
+    } catch (e) {
+      console.warn('Lỗi tải thông báo Header:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    const timer = setInterval(loadNotifications, 10000);
+    return () => clearInterval(timer);
+  }, [userId, userRole]);
+
+  // Đóng popover thông báo khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.dread).length;
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markNotificationAsRead(null, userId, true);
+      setNotifications(prev => prev.map(n => ({ ...n, dread: true })));
+    } catch (err) {
+      console.warn(err);
+    }
+  };
+
+  const handleMarkSingleRead = async (mathongbao) => {
+    try {
+      await markNotificationAsRead(mathongbao, userId, false);
+      setNotifications(prev => prev.map(n => n.mathongbao === mathongbao ? ({ ...n, dread: true }) : n));
+    } catch (err) {
+      console.warn(err);
+    }
+  };
 
   const [currentClock, setCurrentClock] = useState(() => new Date());
   useEffect(() => {
@@ -118,10 +187,100 @@ export default function Header({
                   </button>
                 )}
                 
-                <button className="relative p-2 text-slate-500 hover:text-emerald-600 transition">
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white"></span>
-                </button>
+                {/* NOTIFICATION BELL & DROPDOWN POPOVER */}
+                <div className="relative" ref={notifRef}>
+                  <button 
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    className="relative p-2 text-slate-500 hover:text-emerald-600 transition rounded-xl hover:bg-slate-100"
+                    title="Thông báo hệ thống"
+                  >
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-2 ring-white shadow-sm animate-pulse">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Notification Popover Dropdown */}
+                  {showNotifications && (
+                    <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-sm text-slate-900">Thông Báo</span>
+                          {unreadCount > 0 && (
+                            <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-black text-[10px] rounded-full">
+                              {unreadCount} mới
+                            </span>
+                          )}
+                        </div>
+                        {unreadCount > 0 && (
+                          <button 
+                            onClick={handleMarkAllRead}
+                            className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 transition"
+                          >
+                            Đánh dấu tất cả đã đọc
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100">
+                        {notifications.length === 0 ? (
+                          <div className="py-10 text-center text-slate-400 text-xs">
+                            <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2 opacity-50" />
+                            Hiện tại chưa có thông báo nào
+                          </div>
+                        ) : (
+                          notifications.map((n) => {
+                            const isUnread = !n.dread;
+                            const notifTime = n.created_at 
+                              ? new Date(n.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(n.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+                              : '';
+                            return (
+                              <div 
+                                key={n.mathongbao}
+                                onClick={() => handleMarkSingleRead(n.mathongbao)}
+                                className={`p-3.5 hover:bg-slate-50 transition cursor-pointer flex items-start gap-3 ${
+                                  isUnread ? 'bg-emerald-50/40' : ''
+                                }`}
+                              >
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                  n.loaithongbao === 'REMINDER' ? 'bg-rose-100 text-rose-600' :
+                                  n.loaithongbao === 'BOOKING' ? 'bg-emerald-100 text-emerald-600' :
+                                  n.loaithongbao === 'COMMISSION' ? 'bg-purple-100 text-purple-600' :
+                                  n.loaithongbao === 'AUTO_COMPLETE' ? 'bg-blue-100 text-blue-600' :
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {n.loaithongbao === 'REMINDER' ? <AlertTriangle className="w-4 h-4" /> :
+                                   n.loaithongbao === 'BOOKING' ? <Calendar className="w-4 h-4" /> :
+                                   n.loaithongbao === 'COMMISSION' ? <DollarSign className="w-4 h-4" /> :
+                                   n.loaithongbao === 'AUTO_COMPLETE' ? <Clock className="w-4 h-4" /> :
+                                   <Bell className="w-4 h-4" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <h4 className={`text-xs truncate ${isUnread ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
+                                      {n.tieude}
+                                    </h4>
+                                    {isUnread && <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>}
+                                  </div>
+                                  <p className="text-[11px] text-slate-600 mt-1 line-clamp-3 leading-relaxed">
+                                    {n.noidung}
+                                  </p>
+                                  {notifTime && (
+                                    <span className="text-[10px] text-slate-400 font-mono mt-1 block">
+                                      {notifTime}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* AVATAR & DROPDOWN MENU */}
                 <div className="relative">
@@ -206,6 +365,22 @@ export default function Header({
           </div>
         </div>
       </header>
+
+      {/* FLOATING REALTIME TOAST BANNER */}
+      {activeToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white rounded-2xl shadow-2xl border border-emerald-300 p-4 flex items-start gap-3 shadow-emerald-500/10">
+          <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0 mt-0.5">
+            <Bell className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-black text-slate-900">{activeToast.tieude}</div>
+            <div className="text-[11px] text-slate-600 mt-1 leading-snug">{activeToast.noidung}</div>
+          </div>
+          <button onClick={() => setActiveToast(null)} className="text-slate-400 hover:text-slate-600 p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
     </>
   );

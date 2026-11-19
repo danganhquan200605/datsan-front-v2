@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Users, Building2, CheckCircle2, XCircle, 
   RefreshCw, MapPin, Tag, UserCheck, Search, DollarSign, Eye, X, Award, CheckSquare,
-  AlertTriangle, ShieldAlert, ArrowRight
+  AlertTriangle, ShieldAlert, ArrowRight, Bell
 } from 'lucide-react';
-import { supabase, verifyPhoneOtp } from '../supabaseClient';
+import { supabase, verifyPhoneOtp, sendNotification } from '../supabaseClient';
 import Header from '../components/Header';
+
+const parseMeta = (ghichu) => {
+  try { return JSON.parse(ghichu || '{}'); } catch { return {}; }
+};
 
 export default function AdminDashboard() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -26,6 +30,7 @@ export default function AdminDashboard() {
   // States Dữ Liệu
   const [sanList, setSanList] = useState([]);
   const [userList, setUserList] = useState([]);
+  const [allBookings, setAllBookings] = useState([]);
   const [bookingCount, setBookingCount] = useState(0);
   const [totalSystemRevenue, setTotalSystemRevenue] = useState(0);
   const [revenueStats, setRevenueStats] = useState({
@@ -132,12 +137,9 @@ export default function AdminDashboard() {
       setSanList(formattedSan);
 
       // Đếm tổng lượt đặt & bóc tách doanh thu hoa hồng sàn (10%)
+      setAllBookings(rawBookings);
       setBookingCount(rawBookings.length);
       
-      const parseMeta = (ghichu) => {
-        try { return JSON.parse(ghichu || '{}'); } catch { return {}; }
-      };
-
       let totalGMV = 0;
       let qrCommission = 0;
       let cashCommissionSettled = 0;
@@ -205,6 +207,29 @@ export default function AdminDashboard() {
     const initialFetch = window.setTimeout(fetchAdminData, 0);
     return () => window.clearTimeout(initialFetch);
   }, []);
+
+  // Gửi thông báo nhắc nộp hoa hồng cho Chủ Sân
+  const handleSendDebtReminder = async (owner, debtAmount, isOverdue) => {
+    try {
+      const title = debtAmount > 0 
+        ? `⚠️ Nhắc nộp hoa hồng sàn DatSanOnline ${isOverdue ? '(Quá hạn 1 tuần)' : ''}`
+        : `📢 Thông báo từ Ban Quản Trị sàn DatSanOnline`;
+      const content = debtAmount > 0
+        ? `Chào ${owner.hoten}, bạn đang có khoản nợ hoa hồng 10% các đơn tiền mặt là ${debtAmount.toLocaleString('vi-VN')} đ ${isOverdue ? '(Đã quá hạn hơn 7 ngày)' : ''}. Vui lòng truy cập trang Quản Lý Sân và quét mã VietQR để nộp hoa hồng cho sàn.`
+        : `Chào ${owner.hoten}, Ban Quản Trị DatSanOnline gửi lời chào và nhắc nhở bạn duy trì chất lượng phục vụ sân thể thao.`;
+
+      await sendNotification({
+        manguoidung: owner.manguoidung,
+        tieude: title,
+        noidung: content,
+        loaithongbao: 'REMINDER'
+      });
+
+      alert(`✅ Đã gửi thông báo nhắc nợ thành công tới chủ sân ${owner.hoten}!`);
+    } catch (err) {
+      alert('Không thể gửi thông báo: ' + err.message);
+    }
+  };
 
   // Xử lý Duyệt / Khóa sân bãi
   const handleUpdateFieldStatus = async (maSan, newStatus) => {
@@ -652,6 +677,12 @@ export default function AdminDashboard() {
                         <th className="py-3 px-4">Email / SĐT</th>
                         <th className="py-3 px-4">Vai Trò</th>
                         <th className="py-3 px-4 text-center">Số Sân Đang Đăng Ký</th>
+                        {userRoleFilter === 'CHUSAN' && (
+                          <>
+                            <th className="py-3 px-4 text-center">Nợ Hoa Hồng (10%)</th>
+                            <th className="py-3 px-4 text-center">Nhắc Nợ / Thông Báo</th>
+                          </>
+                        )}
                         <th className="py-3 px-4 text-right">Phân Quyền Vai Trò</th>
                       </tr>
                     </thead>
@@ -660,6 +691,27 @@ export default function AdminDashboard() {
                         const ownerFields = sanList.filter(s => s.machusan === u.manguoidung);
                         const fieldCount = ownerFields.length;
                         const isDemotedOwner = fieldCount > 0 && u.vaitro !== 'CHUSAN';
+
+                        // Tính nợ hoa hồng 10% từ các đơn tiền mặt đã hoàn thành nhưng chưa nộp
+                        const ownerFieldIds = ownerFields.map(s => Number(s.masan));
+                        const ownerBookings = allBookings.filter(b => ownerFieldIds.includes(Number(b.masan)));
+                        const debtBookings = ownerBookings.filter(b => {
+                          const meta = parseMeta(b.ghichu);
+                          const isCash = meta.paymentMethod === 'TIEN_MAT' || b.trangthai === 'CHO_THI_DAU';
+                          return (b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH') &&
+                            isCash &&
+                            meta.commissionStatus === 'CHO_CHUSAN_NOP';
+                        });
+                        const ownerDebt = debtBookings.reduce((sum, b) => {
+                          const meta = parseMeta(b.ghichu);
+                          return sum + Number(meta.commissionAmount || Math.round(Number(b.tongtien || 0) * 0.1));
+                        }, 0);
+                        const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+                        const nowTime = Date.now();
+                        const isOverdueWeek = debtBookings.some(b => {
+                          const bDate = new Date(b.ngaysudung || b.ngaydat || b.created_at).getTime();
+                          return (nowTime - bDate) >= oneWeekMs;
+                        });
 
                         return (
                           <tr key={u.manguoidung} className={`hover:bg-slate-50/60 transition ${isDemotedOwner ? 'bg-amber-50/30' : ''}`}>
@@ -703,6 +755,44 @@ export default function AdminDashboard() {
                                 <span className="text-slate-400 font-medium">0</span>
                               )}
                             </td>
+
+                            {/* CỘT NỢ HOA HỒNG & NHẮC NỢ (CHO BÊN CHỦ SÂN) */}
+                            {userRoleFilter === 'CHUSAN' && (
+                              <>
+                                <td className="py-4 px-4 text-center">
+                                  {ownerDebt > 0 ? (
+                                    <div className="flex flex-col items-center">
+                                      <span className="font-black text-rose-600 text-xs">{ownerDebt.toLocaleString('vi-VN')} đ</span>
+                                      {isOverdueWeek ? (
+                                        <span className="px-2 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded text-[10px] font-black inline-flex items-center gap-1 mt-1 shadow-xs animate-pulse">
+                                          <AlertTriangle className="w-3 h-3 text-rose-600" /> Quá hạn 1 tuần
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-amber-700 font-semibold mt-0.5">Trong hạn</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-emerald-700 font-bold text-xs inline-flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> 0 đ
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  <button
+                                    onClick={() => handleSendDebtReminder(u, ownerDebt, isOverdueWeek)}
+                                    className={`px-3 py-1.5 font-black text-[11px] rounded-xl border transition inline-flex items-center gap-1.5 ${
+                                      ownerDebt > 0
+                                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300 ring-2 ring-rose-200 shadow-sm'
+                                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                                    }`}
+                                    title="Bấm để gửi thông báo nhắc nợ tới chủ sân"
+                                  >
+                                    <Bell className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>{ownerDebt > 0 ? 'Nhắc Nợ' : 'Gửi Thông Báo'}</span>
+                                  </button>
+                                </td>
+                              </>
+                            )}
 
                             {/* NÚT PHÂN QUYỀN VAI TRÒ */}
                             <td className="py-4 px-4 text-right space-x-1.5 whitespace-nowrap">

@@ -65,6 +65,41 @@ export async function settleOwnerBooking(action, bookingId, ownerId) {
   });
 }
 
+export async function fetchNotifications(userId, role) {
+  try {
+    const query = new URLSearchParams();
+    if (userId) query.set('manguoidung', userId);
+    if (role) query.set('role', role);
+    const res = await apiRequest(`/api/notifications?${query.toString()}`);
+    return res.data || [];
+  } catch (err) {
+    console.warn('Lỗi lấy thông báo:', err);
+    return [];
+  }
+}
+
+export async function sendNotification({ manguoidung, tieude, noidung, loaithongbao = 'SYSTEM' }) {
+  return apiRequest('/api/notifications', {
+    method: 'POST',
+    body: JSON.stringify({ manguoidung, tieude, noidung, loaithongbao }),
+  });
+}
+
+export async function markNotificationAsRead(mathongbao, manguoidung, all = false) {
+  return apiRequest('/api/notifications/read', {
+    method: 'POST',
+    body: JSON.stringify({ mathongbao, manguoidung, all }),
+  });
+}
+
+export async function triggerAutoComplete() {
+  try {
+    return await apiRequest('/api/bookings/auto-complete', { method: 'POST' });
+  } catch {
+    return null;
+  }
+}
+
 class ApiQuery {
   constructor(table) {
     this.payload = { table, action: 'select', columns: '*', filters: [] };
@@ -138,6 +173,18 @@ export const supabase = {
       const result = await settleOwnerBooking(action, bookingId, ownerId);
       return { data: result, error: null };
     } catch (error) { return { data: null, error }; }
+  },
+  async getNotifications(userId, role) {
+    return fetchNotifications(userId, role);
+  },
+  async sendNotification(payload) {
+    return sendNotification(payload);
+  },
+  async markNotificationRead(mathongbao, userId, all) {
+    return markNotificationAsRead(mathongbao, userId, all);
+  },
+  async triggerAutoComplete() {
+    return triggerAutoComplete();
   },
   storage,
   // The REST adapter refreshes subscribed queries periodically; it is not a WebSocket subscription.

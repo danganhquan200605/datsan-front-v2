@@ -5,7 +5,7 @@ import {
   Clock, MapPin, Phone, AlertCircle, PlusCircle, RefreshCw, ChevronRight, Eye,
   QrCode, X, Check, XCircle
 } from 'lucide-react';
-import { supabase, settleOwnerBooking } from '../supabaseClient';
+import { supabase, settleOwnerBooking, triggerAutoComplete } from '../supabaseClient';
 import Header from '../components/Header';
 
 export default function OwnerDashboard() {
@@ -46,6 +46,7 @@ export default function OwnerDashboard() {
     if (!ownerId) return;
     try {
       setLoading(true);
+      await triggerAutoComplete();
 
       // 1. Lấy danh sách sân thuộc sở hữu của chủ sân này
       const { data: mySanData, error: sanErr } = await supabase
@@ -129,8 +130,10 @@ export default function OwnerDashboard() {
       } else if (action === 'CANCEL_NO_SHOW') {
         alert('✅ Đã hủy trận (khách bùng/hủy). Phí hoa hồng là 0 đ.');
       } else if (action === 'SETTLE_ALL_COMMISSIONS') {
-        alert('🎉 Đã nộp hoa hồng thành công! Số nợ hoa hồng đã về 0 đ.');
         setShowSettleModal(false);
+        setTimeout(() => {
+          alert('🎉 Đã nộp hoa hồng thành công! Số nợ hoa hồng đã về 0 đ.');
+        }, 100);
       }
       fetchOwnerData();
     } catch (err) {
@@ -160,9 +163,13 @@ export default function OwnerDashboard() {
   const totalFields = sanList.length;
 
   const filteredBookings = bookingList.filter(b => {
+    const meta = parseMeta(b.ghichu);
+    const method = meta.paymentMethod || (b.trangthai === 'CHO_THI_DAU' ? 'TIEN_MAT' : 'QR');
+    const isCash = method === 'TIEN_MAT';
+
     if (bookingFilterStatus === 'ALL') return true;
-    if (bookingFilterStatus === 'CHO_THI_DAU') return b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN';
-    if (bookingFilterStatus === 'DA_THANH_TOAN') return b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC';
+    if (bookingFilterStatus === 'CHO_THI_DAU') return isCash && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
+    if (bookingFilterStatus === 'DA_THANH_TOAN') return !isCash && (b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC' || b.trangthai === 'CHOXACNHAN');
     if (bookingFilterStatus === 'HOAN_THANH') return b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH';
     if (bookingFilterStatus === 'DA_HUY') return b.trangthai === 'DA_HUY' || b.trangthai === 'DAHUY';
     return b.trangthai === bookingFilterStatus;
@@ -361,10 +368,20 @@ export default function OwnerDashboard() {
                           const method = meta.paymentMethod || (b.trangthai === 'CHO_THI_DAU' ? 'TIEN_MAT' : 'QR');
                           const commissionAmt = meta.commissionAmount || Math.round(Number(b.tongtien || 0) * 0.1);
                           const isCash = method === 'TIEN_MAT';
-                          const isPendingCash = (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN') && isCash;
-                          const isPendingQR = b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC';
+                          const isPendingCash = isCash && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
+                          const isPendingQR = !isCash && (b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC' || b.trangthai === 'CHOXACNHAN' || b.trangthai === 'CHO_THI_DAU');
                           const isCompleted = b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH';
                           const isCancelled = b.trangthai === 'DA_HUY' || b.trangthai === 'DAHUY';
+
+                          // Trích xuất khung giờ đặt
+                          const slotTimes = (b.datsan_khunggio || [])
+                            .map(k => {
+                              const start = k.khunggio?.giobatdau ? k.khunggio.giobatdau.slice(0, 5) : '';
+                              const end = k.khunggio?.gioketthuc ? k.khunggio.gioketthuc.slice(0, 5) : '';
+                              return start && end ? `${start} - ${end}` : '';
+                            })
+                            .filter(Boolean)
+                            .join(', ');
 
                           return (
                             <tr key={b.madatsan} className="hover:bg-slate-50/60">
@@ -377,6 +394,13 @@ export default function OwnerDashboard() {
                               <td className="py-4 px-4">
                                 <div className="font-extrabold text-slate-800">{b.san?.tensan}</div>
                                 <div className="text-[11px] text-slate-500 font-medium">{b.ngaysudung}</div>
+                                {slotTimes ? (
+                                  <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 mt-0.5">
+                                    <Clock className="w-3 h-3 text-emerald-600" /> Ca: {slotTimes}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-slate-400 italic">Ca thi đấu</div>
+                                )}
                               </td>
                               <td className="py-4 px-4 font-black text-rose-600">
                                 {Number(b.tongtien).toLocaleString('vi-VN')} đ
@@ -433,6 +457,11 @@ export default function OwnerDashboard() {
                                     Đã hủy / Bùng trận
                                   </span>
                                 )}
+                                {!isPendingCash && !isPendingQR && !isCompleted && !isCancelled && (
+                                  <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full">
+                                    {b.trangthai || 'Chờ xác nhận'}
+                                  </span>
+                                )}
                               </td>
                               <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
                                 {isPendingCash && (
@@ -453,7 +482,7 @@ export default function OwnerDashboard() {
                                     </button>
                                   </>
                                 )}
-                                {isPendingQR && (
+                                {!isCash && !isCompleted && !isCancelled && (
                                   <button
                                     onClick={() => handleUpdateBookingStatus(b.madatsan, 'HOAN_THANH')}
                                     className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] rounded-lg shadow-sm"
