@@ -1124,9 +1124,10 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                 <button
                   disabled={isSubmitting}
                   onClick={() => handleConfirmBooking('QR')}
-                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  {isSubmitting ? 'ĐANG XỬ LÝ...' : '⚡ XÁC NHẬN ĐÃ CHUYỂN KHOẢN 100% (DEMO THÀNH CÔNG)'}
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isSubmitting ? 'Đang xử lý...' : 'Xác nhận đã chuyển khoản thành công'}
                 </button>
               </div>
             ) : (

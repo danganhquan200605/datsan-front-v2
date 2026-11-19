@@ -841,9 +841,9 @@ export default function Home() {
               <button 
                 disabled={isSubmitting}
                 onClick={confirmBookingToSupabase}
-                className="flex-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:opacity-50 transition"
               >
-                {isSubmitting ? 'ĐANG LƯU...' : paymentMethod === 'QR' ? '⚡ XÁC NHẬN ĐÃ QUÉT QR (DEMO)' : '✓ XÁC NHẬN ĐẶT SÂN TIỀN MẶT'}
+                {isSubmitting ? 'Đang lưu...' : paymentMethod === 'QR' ? 'Xác nhận đã thanh toán VietQR' : 'Xác nhận đặt sân (Tiền mặt)'}
               </button>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Building2, DollarSign, Calendar, Users, Star, CheckCircle2, 
   Clock, MapPin, Phone, AlertCircle, PlusCircle, RefreshCw, ChevronRight, Eye,
-  QrCode, X, Check, XCircle
+  QrCode, X, Check, XCircle, Search, RotateCcw, Filter
 } from 'lucide-react';
 import { supabase, settleOwnerBooking, triggerAutoComplete } from '../supabaseClient';
 import Header from '../components/Header';
@@ -29,6 +29,9 @@ export default function OwnerDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('BOOKINGS'); // BOOKINGS | FIELDS
   const [bookingFilterStatus, setBookingFilterStatus] = useState('ALL');
+  const [dateFilter, setDateFilter] = useState('');
+  const [shiftFilter, setShiftFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
 
@@ -39,6 +42,17 @@ export default function OwnerDashboard() {
     } catch {
       return {};
     }
+  };
+
+  // Helper phân loại ca thi đấu
+  const getBookingShift = (b) => {
+    const firstSlot = b.datsan_khunggio?.[0]?.khunggio;
+    const startStr = firstSlot?.giobatdau || '';
+    if (!startStr) return 'OTHER';
+    const hour = parseInt(startStr.slice(0, 2), 10);
+    if (hour < 12) return 'SANG';
+    if (hour < 17) return 'CHIEU';
+    return 'TOI';
   };
 
   // Fetch dữ liệu của riêng Chủ sân từ Supabase
@@ -167,12 +181,31 @@ export default function OwnerDashboard() {
     const method = meta.paymentMethod || (b.trangthai === 'CHO_THI_DAU' ? 'TIEN_MAT' : 'QR');
     const isCash = method === 'TIEN_MAT';
 
-    if (bookingFilterStatus === 'ALL') return true;
-    if (bookingFilterStatus === 'CHO_THI_DAU') return isCash && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
-    if (bookingFilterStatus === 'DA_THANH_TOAN') return !isCash && (b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC' || b.trangthai === 'CHOXACNHAN');
-    if (bookingFilterStatus === 'HOAN_THANH') return b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH';
-    if (bookingFilterStatus === 'DA_HUY') return b.trangthai === 'DA_HUY' || b.trangthai === 'DAHUY';
-    return b.trangthai === bookingFilterStatus;
+    // 1. Lọc theo trạng thái
+    let matchStatus = true;
+    if (bookingFilterStatus === 'CHO_THI_DAU') matchStatus = isCash && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
+    else if (bookingFilterStatus === 'DA_THANH_TOAN') matchStatus = !isCash && (b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC' || b.trangthai === 'CHOXACNHAN');
+    else if (bookingFilterStatus === 'HOAN_THANH') matchStatus = b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH';
+    else if (bookingFilterStatus === 'DA_HUY') matchStatus = b.trangthai === 'DA_HUY' || b.trangthai === 'DAHUY';
+    else if (bookingFilterStatus !== 'ALL') matchStatus = b.trangthai === bookingFilterStatus;
+
+    // 2. Lọc theo ngày
+    const bookingDate = String(b.ngaysudung || b.ngaydat || '').slice(0, 10);
+    const matchDate = !dateFilter || bookingDate === dateFilter;
+
+    // 3. Lọc theo ca
+    const bookingShift = getBookingShift(b);
+    const matchShift = shiftFilter === 'ALL' || bookingShift === shiftFilter;
+
+    // 4. Tìm kiếm
+    const query = searchQuery.trim().toLowerCase();
+    const matchSearch = !query ||
+      (b.nguoidung?.hoten || '').toLowerCase().includes(query) ||
+      (b.nguoidung?.sodienthoai || '').includes(query) ||
+      (b.san?.tensan || '').toLowerCase().includes(query) ||
+      String(b.madatsan || '').includes(query);
+
+    return matchStatus && matchDate && matchShift && matchSearch;
   });
 
   return (
@@ -222,7 +255,7 @@ export default function OwnerDashboard() {
             <div className="text-2xl font-black text-slate-900">
               {totalRevenue.toLocaleString('vi-VN')} <span className="text-xs font-bold text-slate-400">đ</span>
             </div>
-            <p className="text-[11px] text-emerald-600 font-bold mt-1">Từ các đơn 100% thanh toán & tiền mặt</p>
+            <p className="text-[11px] text-emerald-600 font-bold mt-1">Doanh thu vận hành sân</p>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -255,27 +288,27 @@ export default function OwnerDashboard() {
               </div>
             </div>
             <div className="text-2xl font-black text-slate-900">4.9 / 5.0</div>
-            <p className="text-[11px] text-purple-600 font-bold mt-1">Dựa trên nhận xét thực tế</p>
+            <p className="text-[11px] text-purple-600 font-bold mt-1">Đánh giá từ khách hàng</p>
           </div>
 
         </div>
 
         {/* SỔ NỢ HOA HỒNG BANNER CẦN NỘP ADMIN */}
         {totalPendingCommission > 0 && (
-          <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-2xl p-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-start gap-3.5">
               <div className="p-3 bg-amber-500 text-white rounded-xl shadow-md shrink-0">
                 <AlertCircle className="w-6 h-6" />
               </div>
               <div>
                 <h4 className="font-black text-slate-900 text-base flex items-center gap-2">
-                  THÔNG BÁO: SỔ NỢ HOA HỒNG HỆ THỐNG
-                  <span className="px-2.5 py-0.5 bg-rose-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider">
-                    {pendingCommissionBookings.length} đơn tiền mặt thành công
+                  Thông Báo: Quyết Toán Hoa Hồng Sàn
+                  <span className="px-2.5 py-0.5 bg-rose-600 text-white text-[10px] font-black rounded-full uppercase tracking-wider">
+                    {pendingCommissionBookings.length} đơn tiền mặt
                   </span>
                 </h4>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Bạn có các ca thi đấu tiền mặt đã hoàn thành thu tiền trực tiếp từ khách. Tổng số tiền hoa hồng 10% cần nộp về cho Ban Quản Trị:
+                  Các ca thi đấu tiền mặt đã hoàn thành thu trực tiếp. Hoa hồng 10% cần quyết toán về sàn:
                   <span className="ml-1.5 text-base font-black text-rose-600">
                     {totalPendingCommission.toLocaleString('vi-VN')} đ
                   </span>
@@ -284,9 +317,10 @@ export default function OwnerDashboard() {
             </div>
             <button
               onClick={() => setShowSettleModal(true)}
-              className="px-5 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs rounded-xl shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap"
+              style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
+              className="px-5 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
             >
-              <QrCode className="w-4 h-4" /> QUÉT QR NỘP HOA HỒNG CHO ADMIN
+              <QrCode className="w-4 h-4" /> Nộp hoa hồng qua VietQR
             </button>
           </div>
         )}
@@ -319,25 +353,115 @@ export default function OwnerDashboard() {
             {/* TAB 1: DANH SÁCH ĐƠN ĐẶT SÂN & KHÁCH HÀNG */}
             {activeTab === 'BOOKINGS' && (
               <div>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                  <div className="flex items-center gap-2 overflow-x-auto">
-                    {[
-                      { key: 'ALL', label: 'Tất cả đơn' },
-                      { key: 'CHO_THI_DAU', label: 'Chờ đấu (Tiền mặt)' },
-                      { key: 'DA_THANH_TOAN', label: 'Đã TT (QR)' },
-                      { key: 'HOAN_THANH', label: 'Hoàn thành' },
-                      { key: 'DA_HUY', label: 'Đã hủy / Bùng' }
-                    ].map(f => (
+                {/* THANH BỘ LỌC ĐA NĂNG: TRẠNG THÁI + NGÀY + CA + TÌM KIẾM */}
+                <div className="space-y-3 mb-6 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
+                  {/* Hàng 1: Bộ lọc trạng thái đơn & Tìm kiếm */}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                      {[
+                        { key: 'ALL', label: 'Tất cả đơn' },
+                        { key: 'CHO_THI_DAU', label: 'Chờ đấu (Tiền mặt)' },
+                        { key: 'DA_THANH_TOAN', label: 'Đã TT (QR)' },
+                        { key: 'HOAN_THANH', label: 'Hoàn thành' },
+                        { key: 'DA_HUY', label: 'Đã hủy / Bùng' }
+                      ].map(f => (
+                        <button
+                          key={f.key}
+                          onClick={() => setBookingFilterStatus(f.key)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                            bookingFilterStatus === f.key 
+                              ? 'bg-slate-900 text-white shadow-sm' 
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Ô tìm kiếm */}
+                    <div className="relative flex-1 sm:flex-initial min-w-[200px]">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                      <input 
+                        type="text" 
+                        placeholder="Tìm tên khách, SĐT, sân..." 
+                        value={searchQuery} 
+                        onChange={e => setSearchQuery(e.target.value)} 
+                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs" 
+                      />
+                    </div>
+                  </div>
+
+                  {/* Hàng 2: Lọc theo Ngày & Ca thi đấu */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/60 text-xs">
+                    {/* Lọc theo Ngày */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-600 text-[11px] flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-600" /> Ngày đá:
+                      </span>
+                      <input 
+                        type="date" 
+                        value={dateFilter} 
+                        onChange={e => setDateFilter(e.target.value)} 
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs" 
+                      />
                       <button
-                        key={f.key}
-                        onClick={() => setBookingFilterStatus(f.key)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                          bookingFilterStatus === f.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        onClick={() => {
+                          const today = new Date().toISOString().slice(0, 10);
+                          setDateFilter(today);
+                        }}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition ${
+                          dateFilter === new Date().toISOString().slice(0, 10)
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
-                        {f.label}
+                        Hôm nay
                       </button>
-                    ))}
+                      {dateFilter && (
+                        <button
+                          onClick={() => setDateFilter('')}
+                          className="text-[11px] text-slate-400 hover:text-rose-600 font-bold px-1"
+                          title="Xóa lọc ngày"
+                        >
+                          ✕ Xóa
+                        </button>
+                      )}
+                    </div>
+
+                    <span className="text-slate-300 hidden sm:inline">|</span>
+
+                    {/* Lọc theo Ca */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-600 text-[11px] flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-emerald-600" /> Ca đá:
+                      </span>
+                      <select 
+                        value={shiftFilter} 
+                        onChange={e => setShiftFilter(e.target.value)} 
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                      >
+                        <option value="ALL">Tất cả ca trong ngày</option>
+                        <option value="SANG">Ca Sáng (05:00 - 12:00)</option>
+                        <option value="CHIEU">Ca Chiều (12:00 - 17:00)</option>
+                        <option value="TOI">Ca Tối (17:00 - 23:00)</option>
+                      </select>
+                    </div>
+
+                    {/* Nút Đặt lại bộ lọc */}
+                    {(bookingFilterStatus !== 'ALL' || dateFilter || shiftFilter !== 'ALL' || searchQuery) && (
+                      <button
+                        onClick={() => {
+                          setBookingFilterStatus('ALL');
+                          setDateFilter('');
+                          setShiftFilter('ALL');
+                          setSearchQuery('');
+                        }}
+                        className="ml-auto text-[11px] text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" /> Đặt lại bộ lọc
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -346,7 +470,7 @@ export default function OwnerDashboard() {
                 ) : filteredBookings.length === 0 ? (
                   <div className="py-16 text-center text-slate-400">
                     <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="text-xs font-bold">Chưa có đơn đặt sân nào trong danh mục này.</p>
+                    <p className="text-xs font-bold">Chưa có đơn đặt sân nào phù hợp với bộ lọc.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -354,11 +478,11 @@ export default function OwnerDashboard() {
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
                           <th className="py-3 px-4">Khách Hàng & SĐT</th>
-                          <th className="py-3 px-4">Tên Sân & Ngày Đá</th>
-                          <th className="py-3 px-4">Tổng Tiền (100%)</th>
-                          <th className="py-3 px-4">Hình Thức & Hoa Hồng</th>
+                          <th className="py-3 px-4">Tên Sân & Lịch Thi Đấu</th>
+                          <th className="py-3 px-4">Tổng Tiền</th>
+                          <th className="py-3 px-4">Hình Thức Thanh Toán</th>
                           <th className="py-3 px-4">Trạng Thái</th>
-                          <th className="py-3 px-4 text-right">Thao Tác Chủ Sân</th>
+                          <th className="py-3 px-4 text-right">Thao Tác</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -409,25 +533,25 @@ export default function OwnerDashboard() {
                                 {isCash ? (
                                   <div>
                                     <span className="font-bold text-blue-700 flex items-center gap-1">
-                                      <DollarSign className="w-3.5 h-3.5" /> Tiền mặt tại sân
+                                      <DollarSign className="w-3.5 h-3.5" /> Tiền mặt
                                     </span>
                                     <div className="text-[10px] text-slate-500 mt-0.5">
                                       {isCompleted && meta.commissionStatus === 'CHO_CHUSAN_NOP' 
-                                        ? <span className="text-amber-600 font-bold">Nợ Admin: {commissionAmt.toLocaleString('vi-VN')} đ</span>
+                                        ? <span className="text-amber-600 font-bold">Chờ nộp hoa hồng: {commissionAmt.toLocaleString('vi-VN')} đ</span>
                                         : isCompleted && meta.commissionStatus === 'DA_QUYET_TOAN'
-                                        ? <span className="text-emerald-600 font-bold">Đã nộp Admin 10%</span>
+                                        ? <span className="text-emerald-600 font-bold">Đã đối soát hoa hồng</span>
                                         : isCancelled
-                                        ? <span>Hoa hồng: 0 đ</span>
-                                        : <span>Ghi nợ 10% khi xong: {commissionAmt.toLocaleString('vi-VN')} đ</span>}
+                                        ? <span>Đã hủy</span>
+                                        : <span>Hoa hồng sàn 10%: {commissionAmt.toLocaleString('vi-VN')} đ</span>}
                                     </div>
                                   </div>
                                 ) : (
                                   <div>
                                     <span className="font-bold text-emerald-700 flex items-center gap-1">
-                                      <QrCode className="w-3.5 h-3.5" /> VietQR (100%)
+                                      <QrCode className="w-3.5 h-3.5" /> Chuyển khoản VietQR
                                     </span>
                                     <div className="text-[10px] text-emerald-600 mt-0.5">
-                                      Sàn đã thu & trích 10% hoa hồng
+                                      Đã đối soát tự động
                                     </div>
                                   </div>
                                 )}
@@ -435,12 +559,12 @@ export default function OwnerDashboard() {
                               <td className="py-4 px-4">
                                 {isPendingCash && (
                                   <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full">
-                                    Chờ đấu (Thu tiền mặt)
+                                    Chờ thi đấu (Tiền mặt)
                                   </span>
                                 )}
                                 {isPendingQR && (
                                   <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
-                                    Đã TT 100% (QR)
+                                    Đã thanh toán (QR)
                                   </span>
                                 )}
                                 {isCompleted && (
@@ -449,12 +573,12 @@ export default function OwnerDashboard() {
                                       ? 'bg-amber-100 text-amber-800'
                                       : 'bg-emerald-100 text-emerald-800'
                                   }`}>
-                                    {isCash && meta.commissionStatus === 'CHO_CHUSAN_NOP' ? 'Hoàn thành (Chờ nộp 10%)' : 'Hoàn thành'}
+                                    {isCash && meta.commissionStatus === 'CHO_CHUSAN_NOP' ? 'Chờ nộp hoa hồng' : 'Hoàn thành'}
                                   </span>
                                 )}
                                 {isCancelled && (
                                   <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">
-                                    Đã hủy / Bùng trận
+                                    Đã hủy
                                   </span>
                                 )}
                                 {!isPendingCash && !isPendingQR && !isCompleted && !isCancelled && (
@@ -606,16 +730,18 @@ export default function OwnerDashboard() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowSettleModal(false)}
-                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
                 >
                   Để sau
                 </button>
                 <button
                   disabled={isSettling}
                   onClick={() => handleSettleAction('SETTLE_ALL_COMMISSIONS')}
-                  className="flex-2 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs shadow-md shadow-amber-500/20 disabled:opacity-50"
+                  style={{ backgroundColor: '#059669', color: '#ffffff' }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  {isSettling ? 'ĐANG QUYẾT TOÁN...' : '⚡ XÁC NHẬN ĐÃ NỘP HOA HỒNG (DEMO)'}
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isSettling ? 'Đang xử lý...' : 'Xác nhận đã chuyển khoản'}
                 </button>
               </div>
             </div>
