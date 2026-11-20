@@ -123,6 +123,40 @@ export default function Header({
     }
   };
 
+  // Xử lý click vào thông báo: Đánh dấu đã đọc & tự động chuyển đến chức năng tương ứng
+  const handleNotificationClick = async (n) => {
+    try {
+      await handleMarkSingleRead(n.mathongbao);
+    } catch {
+      // ignore
+    }
+    setShowNotifications(false);
+
+    if (n.loaithongbao === 'NEW_FIELD') {
+      // Có hồ sơ sân mới chờ duyệt -> Admin đến thẳng mục duyệt sân
+      navigate('/admin?tab=PENDING_FIELDS');
+    } else if (n.loaithongbao === 'BOOKING') {
+      // Có khách đặt sân mới -> Chủ sân đến bảng quản lý sân, Khách đến lịch sử đơn
+      if (userRole === 'CHUSAN') {
+        navigate('/owner');
+      } else if (userRole === 'ADMIN') {
+        navigate('/admin?tab=ALL_FIELDS');
+      } else {
+        navigate('/profile');
+      }
+    } else if (n.loaithongbao === 'COMMISSION' || n.loaithongbao === 'REMINDER') {
+      // Nộp hoa hồng -> Chủ sân đến bảng quản lý, Admin đến kiểm tra sổ nợ
+      if (userRole === 'CHUSAN') {
+        navigate('/owner');
+      } else if (userRole === 'ADMIN') {
+        navigate('/admin');
+      }
+    } else if (n.loaithongbao === 'AUTO_COMPLETE') {
+      // Trận đấu hoàn tất -> Khách đến profile để đánh giá sân
+      navigate('/profile');
+    }
+  };
+
   const [currentClock, setCurrentClock] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentClock(new Date()), 1000);
@@ -265,7 +299,7 @@ export default function Header({
                             return (
                               <div 
                                 key={n.mathongbao}
-                                onClick={() => handleMarkSingleRead(n.mathongbao)}
+                                onClick={() => handleNotificationClick(n)}
                                 className={`p-3.5 hover:bg-slate-50 transition cursor-pointer flex items-start gap-3 ${
                                   isUnread ? 'bg-emerald-50/40' : ''
                                 }`}

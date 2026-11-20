@@ -34,7 +34,17 @@ export default function AdminDashboard({ user, setUser }) {
     return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
   }, []);
 
-  const [activeTab, setActiveTab] = useState('PENDING_FIELDS'); // PENDING_FIELDS | ALL_FIELDS | USERS
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = new URLSearchParams(window.location.search).get('tab');
+    return tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS'].includes(tabParam) ? tabParam : 'PENDING_FIELDS';
+  });
+
+  useEffect(() => {
+    const tabParam = new URLSearchParams(window.location.search).get('tab');
+    if (tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [window.location.search]);
   const [userRoleFilter, setUserRoleFilter] = useState('ALL'); // ALL | KHACHHANG | CHUSAN
   const [loading, setLoading] = useState(true);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
