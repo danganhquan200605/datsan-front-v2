@@ -1,6 +1,13 @@
 // Compatibility adapter: UI components keep their familiar query-chain syntax,
 // while every database/storage request goes through the separate DatSan API.
-const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+const isBrowserRemote = typeof window !== 'undefined' &&
+  window.location.hostname !== 'localhost' &&
+  window.location.hostname !== '127.0.0.1';
+
+const apiUrl = (
+  import.meta.env.VITE_API_URL ||
+  (isBrowserRemote ? 'https://datsan-back-v2.onrender.com' : 'http://localhost:5000')
+).replace(/\/$/, '');
 const activeChannels = new WeakMap();
 
 const getAccessToken = () => sessionStorage.getItem('datsan_access_token');
