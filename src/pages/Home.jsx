@@ -84,10 +84,11 @@ const getQuickDateList = (selectedDateStr) => {
   return { list, isNotToday: diffDays > 0, todayStr };
 };
 
-export default function Home() {
+export default function Home({ user, setUser }) {
   const navigate = useNavigate();
   // Duy trì phiên đăng nhập chuẩn SPA
   const [currentUser, setCurrentUser] = useState(() => {
+    if (user) return user;
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
@@ -96,6 +97,12 @@ export default function Home() {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (user !== undefined) {
+      setCurrentUser(user);
+    }
+  }, [user]);
 
   const [loaiSanList, setLoaiSanList] = useState([]);
   const [timeSlotList, setTimeSlotList] = useState([]);
@@ -298,6 +305,7 @@ export default function Home() {
       sessionStorage.setItem('datsan_refresh_token', session.refreshToken);
       setCurrentUser(session.user);
       sessionStorage.setItem('datsan_user', JSON.stringify(session.user));
+      if (typeof setUser === 'function') setUser(session.user);
       setShowLoginModal(false);
       resetAuthForm();
     } catch (error) {

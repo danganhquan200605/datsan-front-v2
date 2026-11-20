@@ -13,13 +13,17 @@ import RegisterField from './pages/RegisterField';
 import OwnerDashboard from './pages/OwnerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 
-function RoleRoute({ user, allowedRoles, children }) {
-  let activeUser = user;
-  if (!activeUser) {
-    try { activeUser = JSON.parse(sessionStorage.getItem('datsan_user')); } catch { activeUser = null; }
+function RoleRoute({ allowedRoles, children }) {
+  let activeUser = null;
+  try {
+    const saved = sessionStorage.getItem('datsan_user');
+    activeUser = saved ? JSON.parse(saved) : null;
+  } catch {
+    activeUser = null;
   }
+
   if (!activeUser) return <Navigate to="/?login=1" replace />;
-  const role = String(activeUser.VaiTro || activeUser.vaitro || '').toUpperCase();
+  const role = String(activeUser.VaiTro || activeUser.vaitro || activeUser.role || '').toUpperCase();
   if (!allowedRoles.includes(role)) return <Navigate to="/" replace />;
   return children;
 }
@@ -46,14 +50,14 @@ function App() {
         <Route path="/ticket/:id" element={<Ticket user={currentUser} setUser={setCurrentUser} />} />
         <Route path="/login" element={<Login user={currentUser} setUser={setCurrentUser} />} />
         <Route path="/matchmaking" element={<Matchmaking user={currentUser} setUser={setCurrentUser} />} />
-        <Route path="/profile/*" element={<RoleRoute user={currentUser} allowedRoles={['KHACHHANG', 'CHUSAN', 'ADMIN']}><UserProfile user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
-        <Route path="/register-field" element={<RoleRoute user={currentUser} allowedRoles={['KHACHHANG', 'CHUSAN', 'ADMIN']}><RegisterField user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
+        <Route path="/profile/*" element={<RoleRoute allowedRoles={['KHACHHANG', 'CHUSAN', 'ADMIN']}><UserProfile user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
+        <Route path="/register-field" element={<RoleRoute allowedRoles={['KHACHHANG', 'CHUSAN', 'ADMIN']}><RegisterField user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
 
         {/* 2. Luồng Của Chủ Sân (Field Owner Portal) */}
-        <Route path="/owner/*" element={<RoleRoute user={currentUser} allowedRoles={['CHUSAN', 'ADMIN']}><OwnerDashboard user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
+        <Route path="/owner/*" element={<RoleRoute allowedRoles={['CHUSAN', 'ADMIN']}><OwnerDashboard user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
 
         {/* 3. Luồng Quản Trị Hệ Thống (Super Admin Portal) */}
-        <Route path="/admin/*" element={<RoleRoute user={currentUser} allowedRoles={['ADMIN']}><AdminDashboard user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
+        <Route path="/admin/*" element={<RoleRoute allowedRoles={['ADMIN']}><AdminDashboard user={currentUser} setUser={setCurrentUser} /></RoleRoute>} />
       </Routes>
     </Router>
   );
