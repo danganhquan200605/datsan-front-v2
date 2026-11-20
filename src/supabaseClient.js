@@ -4,10 +4,17 @@ const isBrowserRemote = typeof window !== 'undefined' &&
   window.location.hostname !== 'localhost' &&
   window.location.hostname !== '127.0.0.1';
 
-const apiUrl = (
-  import.meta.env.VITE_API_URL ||
-  (isBrowserRemote ? 'https://datsan-back-v2.onrender.com' : 'http://localhost:5000')
-).replace(/\/$/, '');
+let rawApiUrl = (import.meta.env.VITE_API_URL || '').trim();
+if (isBrowserRemote) {
+  // If running online (e.g. Vercel), route directly to live Render backend
+  if (!rawApiUrl || rawApiUrl.includes('datsan-back-v2.vercel.app') || rawApiUrl.includes('localhost')) {
+    rawApiUrl = 'https://datsan-back-v2.onrender.com';
+  }
+} else if (!rawApiUrl) {
+  rawApiUrl = 'http://localhost:5000';
+}
+
+const apiUrl = rawApiUrl.replace(/\/$/, '');
 const activeChannels = new WeakMap();
 
 const getAccessToken = () => sessionStorage.getItem('datsan_access_token');
