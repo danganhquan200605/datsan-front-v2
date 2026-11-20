@@ -99,10 +99,10 @@ export async function sendNotification({ manguoidung, tieude, noidung, loaithong
   });
 }
 
-export async function markNotificationAsRead(mathongbao, manguoidung, all = false) {
+export async function markNotificationAsRead(mathongbao, manguoidung, all = false, role = null) {
   return apiRequest('/api/notifications/read', {
     method: 'POST',
-    body: JSON.stringify({ mathongbao, manguoidung, all }),
+    body: JSON.stringify({ mathongbao, manguoidung, all, role }),
   });
 }
 

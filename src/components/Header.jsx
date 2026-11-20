@@ -38,10 +38,28 @@ export default function Header({
 
   // Tải danh sách thông báo
   const loadNotifications = async () => {
-    if (!userId && userRole !== 'ADMIN') return;
+    if (!userId && userRole !== 'ADMIN') {
+      setNotifications([]);
+      return;
+    }
     try {
       const data = await fetchNotifications(userId, userRole);
-      const list = Array.isArray(data) ? data : [];
+      let list = Array.isArray(data) ? data : [];
+      
+      // Lọc bảo vệ chặt chẽ theo phân quyền vai trò (Role-based access control)
+      if (userRole === 'KHACHHANG') {
+        list = list.filter(n =>
+          n.loaithongbao !== 'ADMIN' &&
+          n.loaithongbao !== 'COMMISSION' &&
+          n.loaithongbao !== 'REMINDER' &&
+          (n.manguoidung === userId || n.loaithongbao === 'BROADCAST')
+        );
+      } else if (userRole === 'CHUSAN') {
+        list = list.filter(n =>
+          n.loaithongbao !== 'ADMIN' &&
+          (n.manguoidung === userId || n.loaithongbao === 'BROADCAST')
+        );
+      }
       
       // Kiểm tra có thông báo mới tinh chưa đọc để hiển thị Toast realtime
       if (knownNotifIds.current.size > 0) {
@@ -81,7 +99,7 @@ export default function Header({
 
   const handleMarkAllRead = async () => {
     try {
-      await markNotificationAsRead(null, userId, true);
+      await markNotificationAsRead(null, userId, true, userRole);
       setNotifications(prev => prev.map(n => ({ ...n, dread: true })));
     } catch (err) {
       console.warn(err);
@@ -90,7 +108,7 @@ export default function Header({
 
   const handleMarkSingleRead = async (mathongbao) => {
     try {
-      await markNotificationAsRead(mathongbao, userId, false);
+      await markNotificationAsRead(mathongbao, userId, false, userRole);
       setNotifications(prev => prev.map(n => n.mathongbao === mathongbao ? ({ ...n, dread: true }) : n));
     } catch (err) {
       console.warn(err);
