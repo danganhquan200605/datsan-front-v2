@@ -5,14 +5,15 @@ import {
   Star, CheckCircle2, AlertCircle, XCircle, ChevronLeft, 
   Edit3, Save, MessageSquare, ExternalLink, Award, ArrowRight
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
 
-export default function UserProfile() {
+export default function UserProfile({ user: propUser, setUser: propSetUser }) {
   const navigate = useNavigate();
 
   // 1. Lấy thông tin user hiện tại từ LocalStorage / State
   const [user, setUser] = useState(() => {
+    if (propUser) return propUser;
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
@@ -20,6 +21,18 @@ export default function UserProfile() {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (propUser !== undefined) setUser(propUser);
+  }, [propUser]);
+
+  useEffect(() => {
+    const handleAuthChange = (e) => {
+      setUser(e.detail !== undefined ? e.detail : null);
+    };
+    window.addEventListener('datsan_auth_change', handleAuthChange);
+    return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
+  }, []);
 
   // 2. Profile Form State
   const [hoTen, setHoTen] = useState(user?.HoTen || user?.hoten || '');
@@ -127,6 +140,8 @@ export default function UserProfile() {
         email: email
       };
       setUser(updatedUser);
+      if (typeof propSetUser === 'function') propSetUser(updatedUser);
+      broadcastAuthChange(updatedUser);
       sessionStorage.setItem('datsan_user', JSON.stringify(updatedUser));
 
       setIsEditingProfile(false);

@@ -17,6 +17,26 @@ if (isBrowserRemote) {
 const apiUrl = rawApiUrl.replace(/\/$/, '');
 const activeChannels = new WeakMap();
 
+export function getCurrentUser() {
+  try {
+    const saved = sessionStorage.getItem('datsan_user');
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function broadcastAuthChange(user) {
+  if (user) {
+    sessionStorage.setItem('datsan_user', JSON.stringify(user));
+  } else {
+    sessionStorage.removeItem('datsan_user');
+    sessionStorage.removeItem('datsan_access_token');
+    sessionStorage.removeItem('datsan_refresh_token');
+  }
+  window.dispatchEvent(new CustomEvent('datsan_auth_change', { detail: user }));
+}
+
 const getAccessToken = () => sessionStorage.getItem('datsan_access_token');
 
 export async function refreshAuthSession() {

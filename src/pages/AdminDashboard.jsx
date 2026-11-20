@@ -4,15 +4,16 @@ import {
   RefreshCw, MapPin, Tag, UserCheck, Search, DollarSign, Eye, X, Award, CheckSquare,
   AlertTriangle, ShieldAlert, ArrowRight, Bell
 } from 'lucide-react';
-import { supabase, verifyPhoneOtp, sendNotification } from '../supabaseClient';
+import { supabase, verifyPhoneOtp, sendNotification, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
 
 const parseMeta = (ghichu) => {
   try { return JSON.parse(ghichu || '{}'); } catch { return {}; }
 };
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ user, setUser }) {
   const [currentUser, setCurrentUser] = useState(() => {
+    if (user) return user;
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
@@ -20,6 +21,18 @@ export default function AdminDashboard() {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (user !== undefined) setCurrentUser(user);
+  }, [user]);
+
+  useEffect(() => {
+    const handleAuthChange = (e) => {
+      setCurrentUser(e.detail !== undefined ? e.detail : null);
+    };
+    window.addEventListener('datsan_auth_change', handleAuthChange);
+    return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
+  }, []);
 
   const [activeTab, setActiveTab] = useState('PENDING_FIELDS'); // PENDING_FIELDS | ALL_FIELDS | USERS
   const [userRoleFilter, setUserRoleFilter] = useState('ALL'); // ALL | KHACHHANG | CHUSAN
@@ -78,6 +91,8 @@ export default function AdminDashboard() {
             if (authRes.user) {
               sessionStorage.setItem('datsan_user', JSON.stringify(authRes.user));
               setCurrentUser(authRes.user);
+              if (typeof setUser === 'function') setUser(authRes.user);
+              broadcastAuthChange(authRes.user);
             }
             const [retryUserRes, retryBookingRes] = await Promise.all([
               supabase.from('nguoidung').select('*').order('manguoidung', { ascending: false }),
@@ -192,6 +207,8 @@ export default function AdminDashboard() {
         if (authRes.user) {
           sessionStorage.setItem('datsan_user', JSON.stringify(authRes.user));
           setCurrentUser(authRes.user);
+          if (typeof setUser === 'function') setUser(authRes.user);
+          broadcastAuthChange(authRes.user);
         }
         setIsSessionExpired(false);
         await fetchAdminData();

@@ -4,7 +4,7 @@ import {
   Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2, Clock,
   Calendar, AlertTriangle, DollarSign, CheckCircle2, X
 } from 'lucide-react';
-import { fetchNotifications, markNotificationAsRead } from '../supabaseClient';
+import { fetchNotifications, markNotificationAsRead, broadcastAuthChange } from '../supabaseClient';
 
 export default function Header({ 
   user, 
@@ -21,14 +21,22 @@ export default function Header({
   const knownNotifIds = useRef(new Set());
   const navigate = useNavigate();
 
-  // Xử lý đăng xuất
+  // Đồng bộ phiên khi có sự kiện thay đổi xác thực
+  useEffect(() => {
+    const handleAuthChange = (e) => {
+      if (typeof setUser === 'function' && e.detail !== undefined) {
+        setUser(e.detail);
+      }
+    };
+    window.addEventListener('datsan_auth_change', handleAuthChange);
+    return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
+  }, [setUser]);
+
+  // Xử lý đăng xuất (giữ nguyên vị trí trang, cập nhật phiên về Guest mượt mà)
   const handleLogout = () => {
-    sessionStorage.removeItem('datsan_user');
-    sessionStorage.removeItem('datsan_access_token');
-    sessionStorage.removeItem('datsan_refresh_token');
-    setUser(null);
+    broadcastAuthChange(null);
+    if (typeof setUser === 'function') setUser(null);
     setShowDropdown(false);
-    navigate('/');
   };
 
   // Lấy tên hiển thị & vai trò
@@ -357,7 +365,7 @@ export default function Header({
               </>
             ) : (
               <button 
-                onClick={onLoginClick} 
+                onClick={onLoginClick || (() => navigate('/login'))} 
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm transition"
               >
                 <LogIn className="w-4 h-4" /> Đăng nhập

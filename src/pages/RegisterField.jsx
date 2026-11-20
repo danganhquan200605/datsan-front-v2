@@ -4,13 +4,14 @@ import {
   Building2, MapPin, ChevronLeft, ArrowRight, ShieldCheck, Sparkles, 
   Image as ImageIcon, Tag, CheckSquare, Upload, Loader2, X
 } from 'lucide-react';
-import { supabase, registerField } from '../supabaseClient';
+import { supabase, registerField, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
 
-export default function RegisterField() {
+export default function RegisterField({ user, setUser }) {
   const navigate = useNavigate();
 
   const [currentUser, setCurrentUser] = useState(() => {
+    if (user) return user;
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
@@ -18,6 +19,18 @@ export default function RegisterField() {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (user !== undefined) setCurrentUser(user);
+  }, [user]);
+
+  useEffect(() => {
+    const handleAuthChange = (e) => {
+      setCurrentUser(e.detail !== undefined ? e.detail : null);
+    };
+    window.addEventListener('datsan_auth_change', handleAuthChange);
+    return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
+  }, []);
 
   const [loaiSanList, setLoaiSanList] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);

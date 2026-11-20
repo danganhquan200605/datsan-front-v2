@@ -6,7 +6,7 @@ import {
   Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X,
   QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
 
 const DEFAULT_IMAGES = [
@@ -103,6 +103,14 @@ export default function Home({ user, setUser }) {
       setCurrentUser(user);
     }
   }, [user]);
+
+  useEffect(() => {
+    const handleAuthChange = (e) => {
+      setCurrentUser(e.detail !== undefined ? e.detail : null);
+    };
+    window.addEventListener('datsan_auth_change', handleAuthChange);
+    return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
+  }, []);
 
   const [loaiSanList, setLoaiSanList] = useState([]);
   const [timeSlotList, setTimeSlotList] = useState([]);
@@ -306,8 +314,15 @@ export default function Home({ user, setUser }) {
       setCurrentUser(session.user);
       sessionStorage.setItem('datsan_user', JSON.stringify(session.user));
       if (typeof setUser === 'function') setUser(session.user);
+      broadcastAuthChange(session.user);
       setShowLoginModal(false);
       resetAuthForm();
+
+      // Tự động chuyển hướng nếu người dùng đang có yêu cầu truy cập portal cụ thể
+      const redirectUrl = new URLSearchParams(window.location.search).get('redirect');
+      if (redirectUrl) {
+        navigate(redirectUrl);
+      }
     } catch (error) {
       setLoginError(error.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
     } finally {

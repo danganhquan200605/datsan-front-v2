@@ -5,7 +5,7 @@ import {
   Clock, MapPin, Phone, AlertCircle, PlusCircle, RefreshCw, ChevronRight, Eye,
   QrCode, X, Check, XCircle, Search, RotateCcw, Filter
 } from 'lucide-react';
-import { supabase, settleOwnerBooking, triggerAutoComplete } from '../supabaseClient';
+import { supabase, settleOwnerBooking, triggerAutoComplete, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
 
 const getLocalDateValue = (date = new Date()) => {
@@ -52,11 +52,12 @@ const getOwnerQuickDateList = (todayStr) => {
   return list;
 };
 
-export default function OwnerDashboard() {
+export default function OwnerDashboard({ user, setUser }) {
   const navigate = useNavigate();
 
   // Lấy thông tin chủ sân đang đăng nhập
   const [currentUser, setCurrentUser] = useState(() => {
+    if (user) return user;
     try {
       const savedUser = sessionStorage.getItem('datsan_user');
       return savedUser ? JSON.parse(savedUser) : null;
@@ -64,6 +65,18 @@ export default function OwnerDashboard() {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (user !== undefined) setCurrentUser(user);
+  }, [user]);
+
+  useEffect(() => {
+    const handleAuthChange = (e) => {
+      setCurrentUser(e.detail !== undefined ? e.detail : null);
+    };
+    window.addEventListener('datsan_auth_change', handleAuthChange);
+    return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
+  }, []);
 
   const ownerId = currentUser?.MaNguoiDung || currentUser?.manguoidung;
 

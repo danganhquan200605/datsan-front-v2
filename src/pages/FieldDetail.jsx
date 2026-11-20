@@ -6,7 +6,7 @@ import {
   Tv, Heart, ExternalLink, Shield, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, User, Users,
   Search, Bell, LogIn, LogOut, Building2, PlusCircle, LayoutDashboard, X, QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange } from '../supabaseClient';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -522,9 +522,8 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                       <button 
                         onClick={() => {
                           setShowDropdown(false);
-                          sessionStorage.removeItem('datsan_user');
+                          broadcastAuthChange(null);
                           if (typeof setUser === 'function') setUser(null);
-                          navigate('/login');
                         }} 
                         className="w-full px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 font-bold flex items-center gap-2.5 transition text-left"
                       >
