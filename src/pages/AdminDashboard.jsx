@@ -1,13 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, Users, Building2, CheckCircle2, XCircle, 
   RefreshCw, MapPin, Tag, UserCheck, Search, DollarSign, Eye, X, Award, CheckSquare,
-  AlertTriangle, ShieldAlert, ArrowRight, Bell
+  AlertTriangle, ShieldAlert, ArrowRight, Bell, Lock, LogOut, ArrowLeft, Loader2
 } from 'lucide-react';
-import { supabase, sendNotification, broadcastAuthChange } from '../supabaseClient';
+import { 
+  fetchAdminOverview, 
+  updateAdminFieldStatus, 
+  updateAdminUserRole, 
+  sendNotification, 
+  broadcastAuthChange 
+} from '../supabaseClient';
 import Header from '../components/Header';
 import LoginModal from '../components/LoginModal';
+import NotFound from './NotFound';
 
 const parseMeta = (ghichu) => {
   try { return JSON.parse(ghichu || '{}'); } catch { return {}; }
@@ -37,6 +44,7 @@ export default function AdminDashboard({ user, setUser }) {
   }, []);
 
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(() => {
     const tabParam = new URLSearchParams(window.location.search).get('tab');
@@ -79,75 +87,34 @@ export default function AdminDashboard({ user, setUser }) {
     isSubmitting: false
   }); // Modal Xác Nhận Đổi Phân Quyền
 
-  // Tải dữ liệu Admin từ Supabase chuẩn xác theo schema V2
+  // Tải dữ liệu Admin bảo mật từ server endpoint /api/admin/overview
   const fetchAdminData = async () => {
+    const role = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
+    if (!currentUser || role !== 'ADMIN') {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
+      const res = await fetchAdminOverview();
+      const overview = res?.data || {};
+      const fields = overview.fields || [];
+      const users = overview.users || [];
+      const bookings = overview.bookings || [];
 
-      let [sanRes, vtRes, userRes, bookingRes] = await Promise.all([
-        supabase.from('san').select('*').order('masan', { ascending: false }),
-        supabase.from('vitri').select('*'),
-        supabase.from('nguoidung').select('*').order('manguoidung', { ascending: false }),
-        supabase.from('datsan').select('*')
-      ]);
+      setIsSessionExpired(false);
+      setUserList(users);
+      setSanList(fields);
+      setAllBookings(bookings);
+      setBookingCount(bookings.length);
 
-      const rawSan = sanRes.data || [];
-      const rawVt = vtRes.data || [];
-      const rawUsers = userRes.data || [];
-      const rawBookings = bookingRes.data || [];
-
-      // Kiểm tra trạng thái phân quyền Admin
-      const hasAuthError = !!(userRes?.error || bookingRes?.error);
-      setIsSessionExpired(hasAuthError);
-
-      // Chuẩn hóa danh sách người dùng từ bảng nguoidung
-      const formattedUsers = rawUsers.map(u => ({
-        manguoidung: u.manguoidung ?? u.id,
-        mataikhoan: u.manguoidung ?? u.id,
-        tendangnhap: u.tendangnhap || u.sodienthoai || '',
-        email: u.email || '',
-        sodienthoai: u.sodienthoai || '',
-        hoten: u.hoten || 'Người dùng',
-        vaitro: (u.vaitro || 'KHACHHANG').toUpperCase(),
-        trangthai: u.trangthai || 'HOATDONG'
-      }));
-      setUserList(formattedUsers);
-
-      // Chuẩn hóa danh sách sân kèm vị trí & chủ sân
-      const formattedSan = rawSan.map(s => {
-        const vt = rawVt.find(v => Number(v.mavitri ?? v.MaViTri) === Number(s.mavitri ?? s.MaViTri)) || {};
-        const owner = formattedUsers.find(u => Number(u.manguoidung) === Number(s.machusan ?? s.MaChuSan)) || {};
-        return {
-          masan: s.masan ?? s.MaSan,
-          tensan: s.tensan ?? s.TenSan ?? 'Sân thể thao',
-          giasan: s.giasan ?? s.GiaSan ?? 300000,
-          hinhanh: s.hinhanh ?? s.HinhAnh ?? 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=800&q=80',
-          trangthai: s.trangthai ?? s.TrangThai ?? 'HOATDONG',
-          mota: s.mota ?? s.MoTa ?? '',
-          machusan: s.machusan ?? s.MaChuSan,
-          vitri: {
-            diachi: vt.diachi || vt.DiaChi || 'Chưa cập nhật địa chỉ',
-            quan: vt.quan || vt.Quan || 'Đà Nẵng'
-          },
-          nguoidung: {
-            hoten: owner.hoten || 'Chủ sân',
-            sodienthoai: owner.sodienthoai || '',
-            email: owner.email || ''
-          }
-        };
-      });
-      setSanList(formattedSan);
-
-      // Đếm tổng lượt đặt & bóc tách doanh thu hoa hồng sàn (10%)
-      setAllBookings(rawBookings);
-      setBookingCount(rawBookings.length);
-      
       let totalGMV = 0;
       let qrCommission = 0;
       let cashCommissionSettled = 0;
       let cashCommissionPending = 0;
 
-      rawBookings.forEach(item => {
+      bookings.forEach(item => {
         const amount = Number(item.tongtien || item.TongTien || 0);
         const status = item.trangthai || item.TrangThai;
         const meta = parseMeta(item.ghichu || item.GhiChu);
@@ -179,15 +146,22 @@ export default function AdminDashboard({ user, setUser }) {
 
     } catch (err) {
       console.error('Lỗi tải dữ liệu Admin:', err);
+      if (err?.message?.includes('401') || err?.message?.includes('Unauthorized')) {
+        setIsSessionExpired(true);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const initialFetch = window.setTimeout(fetchAdminData, 0);
-    return () => window.clearTimeout(initialFetch);
-  }, []);
+    const role = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
+    if (currentUser && role === 'ADMIN') {
+      fetchAdminData();
+    } else {
+      setLoading(false);
+    }
+  }, [currentUser]);
 
   // Gửi thông báo nhắc nộp hoa hồng cho Chủ Sân
   const handleSendDebtReminder = async (owner, debtAmount, isOverdue) => {
@@ -212,26 +186,21 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
-  // Xử lý Duyệt / Khóa sân bãi
+  // Xử lý Duyệt / Khóa sân bãi (Gọi endpoint backend an toàn & có lý do)
   const handleUpdateFieldStatus = async (maSan, newStatus) => {
+    let reason = '';
+    if (newStatus === 'TU_CHOI') {
+      const inputReason = window.prompt('Nhập lý do từ chối phê duyệt hồ sơ sân:', 'Hồ sơ chưa đạt tiêu chuẩn kiểm duyệt của sàn');
+      if (inputReason === null) return;
+      reason = inputReason.trim() || 'Hồ sơ chưa đạt tiêu chuẩn';
+    } else if (newStatus === 'KHOA' || newStatus === 'TAM_DUNG') {
+      const inputReason = window.prompt('Nhập lý do tạm dừng/tạm khóa sân:', 'Bảo trì sân hoặc vi phạm chính sách vận hành');
+      if (inputReason === null) return;
+      reason = inputReason.trim() || 'Tạm dừng vận hành theo yêu cầu quản trị';
+    }
+
     try {
-      const { error } = await supabase
-        .from('san')
-        .update({ trangthai: newStatus })
-        .eq('masan', maSan);
-
-      if (error) throw error;
-
-      if (newStatus === 'HOATDONG') {
-        const field = sanList.find((item) => Number(item.masan) === Number(maSan));
-        if (field?.machusan) {
-          const { error: ownerError } = await supabase.from('nguoidung')
-            .update({ vaitro: 'CHUSAN' })
-            .eq('manguoidung', field.machusan);
-          if (ownerError) console.warn('Lỗi cập nhật quyền chủ sân:', ownerError);
-        }
-      }
-
+      await updateAdminFieldStatus(maSan, newStatus, reason);
       alert(`Đã cập nhật trạng thái sân thành: ${newStatus}`);
       if (selectedFieldDetail?.masan === maSan) {
         setSelectedFieldDetail(prev => ({ ...prev, trangthai: newStatus }));
@@ -254,18 +223,12 @@ export default function AdminDashboard({ user, setUser }) {
     });
   };
 
-  // Xác Nhận Cập Nhật Vai Trò Người Dùng trong Modal
+  // Xác Nhận Cập Nhật Vai Trò Người Dùng trong Modal (Gọi endpoint backend)
   const handleConfirmRoleChange = async () => {
     if (!confirmRoleModal.user || !confirmRoleModal.targetRole) return;
     try {
       setConfirmRoleModal(prev => ({ ...prev, isSubmitting: true }));
-      const { error } = await supabase
-        .from('nguoidung')
-        .update({ vaitro: confirmRoleModal.targetRole })
-        .eq('manguoidung', confirmRoleModal.user.manguoidung);
-
-      if (error) throw error;
-
+      await updateAdminUserRole(confirmRoleModal.user.manguoidung, confirmRoleModal.targetRole);
       alert(`Đã cập nhật vai trò của tài khoản "${confirmRoleModal.user.hoten}" thành: ${confirmRoleModal.targetRole}`);
       setConfirmRoleModal({ show: false, user: null, targetRole: '', fieldCount: 0, isSubmitting: false });
       fetchAdminData();
@@ -304,6 +267,28 @@ export default function AdminDashboard({ user, setUser }) {
     (s.nguoidung?.hoten || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const userRole = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
+
+  // NẾU CHƯA ĐĂNG NHẬP HOẶC KHÔNG PHẢI SUPER ADMIN -> RENDER TRANG 404 TRUNG TÍNH (ZERO DATA LEAKED)
+  if (!currentUser || userRole !== 'ADMIN') {
+    return <NotFound user={currentUser} setUser={setUser} />;
+  }
+
+  // ADMIN ĐANG TẢI DỮ LIỆU TỪ SERVER
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased flex flex-col">
+        <Header user={currentUser} setUser={setUser} />
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center">
+            <Loader2 className="w-10 h-10 animate-spin text-purple-600 mx-auto mb-3" />
+            <p className="text-xs font-bold text-slate-600">Đang tải trung tâm quản trị tối cao...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased pb-16">
       <Header user={currentUser} setUser={setCurrentUser} onLoginClick={() => setShowLoginModal(true)} />
@@ -332,14 +317,14 @@ export default function AdminDashboard({ user, setUser }) {
         </div>
 
         {/* BANNER CẢNH BÁO HẾT HẠN PHIÊN */}
-        {(isSessionExpired || !currentUser || (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase() !== 'ADMIN') && (
+        {isSessionExpired && (
           <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
               <div>
-                <div className="text-sm font-bold text-amber-900">Yêu cầu quyền Quản Trị Viên (Super Admin)</div>
+                <div className="text-sm font-bold text-amber-900">Phiên quản trị viên đã hết hạn hoặc bị thu hồi</div>
                 <div className="text-xs text-amber-700">
-                  Dữ liệu tài khoản người dùng, đơn đặt sân và doanh thu yêu cầu xác thực Admin. Vui lòng đăng nhập tài khoản Quản trị để quản lý.
+                  Vui lòng đăng nhập lại để làm mới phiên làm việc Super Admin.
                 </div>
               </div>
             </div>
@@ -347,7 +332,7 @@ export default function AdminDashboard({ user, setUser }) {
               onClick={() => setShowLoginModal(true)}
               className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow transition whitespace-nowrap"
             >
-              🔑 Đăng Nhập Quản Trị Viên
+              🔑 Đăng Nhập Lại
             </button>
           </div>
         )}

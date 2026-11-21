@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Building2, DollarSign, Calendar, Users, Star, CheckCircle2, 
   Clock, MapPin, Phone, AlertCircle, PlusCircle, RefreshCw, ChevronRight, Eye,
-  QrCode, X, Check, XCircle, Search, RotateCcw, Filter
+  QrCode, X, Check, XCircle, Search, RotateCcw, Filter, Loader2
 } from 'lucide-react';
-import { supabase, settleOwnerBooking, triggerAutoComplete, broadcastAuthChange } from '../supabaseClient';
+import { supabase, settleOwnerBooking, triggerAutoComplete, broadcastAuthChange, fetchOwnerOverview } from '../supabaseClient';
 import Header from '../components/Header';
 import LoginModal from '../components/LoginModal';
+import NotFound from './NotFound';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -116,54 +117,22 @@ export default function OwnerDashboard({ user, setUser }) {
     return 'TOI';
   };
 
-  // Fetch dữ liệu của riêng Chủ sân từ Supabase
+  const userRole = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
+  const isOwnerOrAdmin = ['CHUSAN', 'ADMIN'].includes(userRole);
+
+  // Fetch dữ liệu của riêng Chủ sân từ endpoint an toàn /api/owner/overview
   const fetchOwnerData = async () => {
-    if (!ownerId) return;
+    if (!currentUser || !isOwnerOrAdmin) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       await triggerAutoComplete();
-
-      // 1. Lấy danh sách sân thuộc sở hữu của chủ sân này
-      const { data: mySanData, error: sanErr } = await supabase
-        .from('san')
-        .select(`
-          masan,
-          tensan,
-          giasan,
-          hinhanh,
-          trangthai,
-          vitri (diachi, quan)
-        `)
-        .eq('machusan', ownerId);
-
-      if (sanErr) throw sanErr;
-      setSanList(mySanData || []);
-
-      const sanIds = (mySanData || []).map(s => s.masan);
-
-      if (sanIds.length > 0) {
-        // 2. Lấy danh sách đơn đặt sân thuộc các sân của chủ sân này (bao gồm cả ghichu)
-        const { data: bookingsData, error: bookingErr } = await supabase
-          .from('datsan')
-          .select(`
-            madatsan,
-            ngaydat,
-            ngaysudung,
-            tongtien,
-            trangthai,
-            ghichu,
-            san (tensan),
-            nguoidung:makhachhang (hoten, sodienthoai),
-            datsan_khunggio (
-              khunggio (giobatdau, gioketthuc)
-            )
-          `)
-          .in('masan', sanIds)
-          .order('ngaydat', { ascending: false });
-
-        if (bookingErr) throw bookingErr;
-        setBookingList(bookingsData || []);
-      }
+      const res = await fetchOwnerOverview();
+      const overview = res?.data || {};
+      setSanList(overview.fields || []);
+      setBookingList(overview.bookings || []);
     } catch (err) {
       console.error('Lỗi tải dữ liệu Owner Dashboard:', err);
     } finally {
@@ -172,9 +141,12 @@ export default function OwnerDashboard({ user, setUser }) {
   };
 
   useEffect(() => {
-    const initialFetch = window.setTimeout(fetchOwnerData, 0);
-    return () => window.clearTimeout(initialFetch);
-  }, [ownerId]);
+    if (currentUser && isOwnerOrAdmin) {
+      fetchOwnerData();
+    } else {
+      setLoading(false);
+    }
+  }, [currentUser, isOwnerOrAdmin]);
 
   // Cập nhật trạng thái đơn đặt sân thông thường
   const handleUpdateBookingStatus = async (maDatSan, newStatus) => {
@@ -269,6 +241,26 @@ export default function OwnerDashboard({ user, setUser }) {
     return matchStatus && matchDate && matchShift && matchSearch;
   });
 
+  // NẾU CHƯA ĐĂNG NHẬP HOẶC KHÔNG PHẢI CHỦ SÂN/ADMIN -> RENDER TRANG 404 TRUNG TÍNH (ZERO DATA LEAKED)
+  if (!currentUser || !isOwnerOrAdmin) {
+    return <NotFound user={currentUser} setUser={setUser} />;
+  }
+
+  // Đang tải dữ liệu
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased flex flex-col">
+        <Header user={currentUser} setUser={setUser} />
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center">
+            <Loader2 className="w-10 h-10 animate-spin text-emerald-600 mx-auto mb-3" />
+            <p className="text-xs font-bold text-slate-600">Đang tải bảng quản lý chủ sân...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased pb-16">
       <Header user={currentUser} setUser={setCurrentUser} onLoginClick={() => setShowLoginModal(true)} />
@@ -302,27 +294,6 @@ export default function OwnerDashboard({ user, setUser }) {
             </button>
           </div>
         </div>
-
-        {/* BANNER YÊU CẦU ĐĂNG NHẬP CHỦ SÂN */}
-        {(!currentUser || (!['CHUSAN', 'ADMIN'].includes((currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase()))) && (
-          <div className="mb-6 p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
-            <div className="flex items-center gap-3">
-              <Building2 className="w-6 h-6 text-emerald-600 flex-shrink-0" />
-              <div>
-                <div className="text-sm font-bold text-emerald-900">Yêu cầu quyền Chủ Sân</div>
-                <div className="text-xs text-emerald-700">
-                  Vui lòng đăng nhập với tài khoản Chủ Sân để quản lý sân bóng, lịch thi đấu và doanh thu.
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition whitespace-nowrap"
-            >
-              🔑 Đăng Nhập Chủ Sân
-            </button>
-          </div>
-        )}
 
         {/* THỐNG KÊ KPI CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">

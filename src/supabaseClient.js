@@ -134,6 +134,28 @@ export async function triggerAutoComplete() {
   }
 }
 
+export async function fetchAdminOverview() {
+  return apiRequest('/api/admin/overview');
+}
+
+export async function fetchOwnerOverview() {
+  return apiRequest('/api/owner/overview');
+}
+
+export async function updateAdminFieldStatus(masan, status, reason = '') {
+  return apiRequest(`/api/admin/fields/${masan}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status, reason }),
+  });
+}
+
+export async function updateAdminUserRole(userId, role) {
+  return apiRequest(`/api/admin/users/${userId}/role`, {
+    method: 'POST',
+    body: JSON.stringify({ role }),
+  });
+}
+
 class ApiQuery {
   constructor(table) {
     this.payload = { table, action: 'select', columns: '*', filters: [] };
