@@ -409,6 +409,18 @@ export async function processMockPayment(payload) {
   });
 }
 
+export async function simulateBookingPayment({ bookingId, simulationAction = 'SIMULATE_SUCCESS', fallbackAction = null }) {
+  return apiRequest('/api/mock-payment/process', {
+    method: 'POST',
+    body: JSON.stringify({
+      transactionType: 'BOOKING',
+      transactionId: Number(bookingId),
+      simulationAction,
+      fallbackAction
+    })
+  });
+}
+
 export async function getMockPaymentConfig() {
   return apiRequest('/api/mock-payment/config');
 }

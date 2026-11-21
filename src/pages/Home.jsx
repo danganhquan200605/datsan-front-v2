@@ -6,7 +6,7 @@ import {
   Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X,
   QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment } from '../supabaseClient';
 import Header from '../components/Header';
 
 const DEFAULT_IMAGES = [
@@ -140,6 +140,8 @@ export default function Home({ user, setUser }) {
   const [bookingSuccessModal, setBookingSuccessModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('QR');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingBookingData, setPendingBookingData] = useState(null);
+  const [simulationFailed, setSimulationFailed] = useState(false);
   
   // Login modal remains visible until a real Supabase Auth flow is configured.
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -342,22 +344,71 @@ export default function Home({ user, setUser }) {
     try {
       setIsSubmitting(true);
       const { san, slot } = selectedSlotForBooking;
-      const { error: bookingErr } = await supabase.createBooking({
+      const { data: bResult, error: bookingErr } = await supabase.createBooking({
         masan: san.MaSan,
         date: selectedDate,
         slotIds: [slot.id],
         paymentMethod,
       });
       if (bookingErr) throw bookingErr;
-      alert(paymentMethod === 'QR' 
-        ? '✅ Thanh toán QR thành công 100%! Đơn đặt sân đã được xác nhận.' 
-        : '✅ Đặt sân thành công! Quý khách vui lòng thanh toán 100% tiền mặt khi đến sân.');
-      setBookingSuccessModal(false);
-      fetchData();
-      navigate('/profile');
+
+      if (paymentMethod === 'TIEN_MAT') {
+        alert('✅ Đặt sân thành công! Quý khách thanh toán 100% tiền mặt tại sân cho Chủ sân. Hoa hồng sàn được ghi nợ tự động.');
+        setBookingSuccessModal(false);
+        fetchData();
+        navigate('/profile');
+      } else {
+        // QR mô phỏng: Chuyển sang bước mô phỏng thanh toán Mock Gateway
+        const bookingId = bResult?.madatsan || bResult?.MaDatSan || (typeof bResult === 'number' ? bResult : null);
+        setPendingBookingData({
+          bookingId,
+          total: selectedSlotForBooking.gia,
+          sanName: san.TenSan || 'Sân thể thao'
+        });
+        setSimulationFailed(false);
+      }
     } catch (err) {
       console.error('Lỗi khi lưu đơn:', err);
       alert('Lỗi đặt sân: ' + (err.message || 'Lỗi hệ thống'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleExecuteHomeSimulation = async (action, fallback = null) => {
+    if (!pendingBookingData?.bookingId) return;
+    try {
+      setIsSubmitting(true);
+      await simulateBookingPayment({
+        bookingId: pendingBookingData.bookingId,
+        simulationAction: action,
+        fallbackAction: fallback
+      });
+
+      if (action === 'SIMULATE_SUCCESS') {
+        setBookingSuccessModal(false);
+        setPendingBookingData(null);
+        alert('✅ Mô phỏng thanh toán trực tuyến THÀNH CÔNG 100%! Đơn đặt sân đã được xác nhận.');
+        fetchData();
+        navigate('/profile');
+      } else if (action === 'SIMULATE_FAILURE') {
+        if (fallback === 'SWITCH_CASH') {
+          setBookingSuccessModal(false);
+          setPendingBookingData(null);
+          alert('💵 Đã chuyển sang hình thức TIỀN MẶT TẠI SÂN. Khung giờ đặt sân của bạn được bảo toàn!');
+          fetchData();
+          navigate('/profile');
+        } else if (fallback === 'CANCEL') {
+          setBookingSuccessModal(false);
+          setPendingBookingData(null);
+          alert('❌ Đã hủy đơn đặt sân và giải phóng khung giờ thi đấu.');
+          fetchData();
+        } else {
+          setSimulationFailed(true);
+        }
+      }
+    } catch (err) {
+      alert('Lỗi mô phỏng thanh toán: ' + (err.message || 'Lỗi kết nối'));
     } finally {
       setIsSubmitting(false);
     }
@@ -760,107 +811,203 @@ export default function Home({ user, setUser }) {
       {bookingSuccessModal && selectedSlotForBooking && currentUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-            <div className="text-center mb-4">
-              <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                Thanh Toán 100% (Không Cọc)
-              </span>
-              <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận & Thanh Toán Đặt Sân</h3>
-            </div>
+            <button
+              onClick={() => {
+                setBookingSuccessModal(false);
+                setPendingBookingData(null);
+                setSimulationFailed(false);
+              }}
+              className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
 
-            <div className="bg-slate-50 rounded-2xl p-4 text-xs space-y-2.5 my-4 border border-slate-200">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Sân thi đấu:</span>
-                <span className="font-bold text-slate-800">{selectedSlotForBooking.san.TenSan}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Khung giờ:</span>
-                <span className="font-bold text-emerald-700">{selectedSlotForBooking.slot.start} - {selectedSlotForBooking.slot.end} ({selectedDate})</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-slate-200 items-baseline">
-                <span className="text-slate-700 font-bold">Tổng thanh toán 100%:</span>
-                <span className="font-black text-lg text-rose-600">
-                  {Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ
-                </span>
-              </div>
-            </div>
-
-            {/* CHỌN PHƯƠNG THỨC */}
-            <div className="grid grid-cols-2 gap-2.5 mb-4">
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('QR')}
-                className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 ${
-                  paymentMethod === 'QR'
-                    ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-xs text-slate-900 flex items-center gap-1">
-                    <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Quét mã mô phỏng (DEMO)
+            {pendingBookingData ? (
+              /* BƯỚC 2: CỔNG THANH TOÁN MÔ PHỎNG */
+              <div>
+                <div className="text-center mb-4">
+                  <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                    Cổng Thanh Toán Mô Phỏng (DEMO)
                   </span>
-                  {paymentMethod === 'QR' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                  <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận Thanh Toán Mô Phỏng</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Đơn đặt sân #{pendingBookingData.bookingId} • {pendingBookingData.sanName}
+                  </p>
                 </div>
-                <span className="text-[10px] text-slate-500">Thanh toán trực tuyến mô phỏng 100%</span>
-              </button>
 
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('TIEN_MAT')}
-                className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 ${
-                  paymentMethod === 'TIEN_MAT'
-                    ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-xs text-slate-900 flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Tiền mặt
-                  </span>
-                  {paymentMethod === 'TIEN_MAT' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 mb-4 text-center">
+                  <div className="text-xs font-bold text-amber-900">⚡ LƯU Ý DEMO: KHÔNG CHUYỂN TIỀN THẬT</div>
+                  <div className="text-[11px] text-amber-700 mt-0.5">
+                    Hệ thống giả lập thanh toán phục vụ học tập và giới thiệu sản phẩm.
+                  </div>
                 </div>
-                <span className="text-[10px] text-slate-500">Trả 100% tại sân cho chủ</span>
-              </button>
-            </div>
 
-            {paymentMethod === 'QR' ? (
-              <div className="space-y-3 mb-4">
-                <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-3 text-center">
-                  <div className="text-[11px] font-bold text-slate-700 mb-1.5">Mã QR Thanh Toán Mô Phỏng (DEMO)</div>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center mb-4">
+                  <div className="text-xs font-bold text-slate-700 mb-1.5">Mã QR Thanh Toán Giả Lập</div>
                   <img 
-                    src={getMockBookingQrSvg(selectedSlotForBooking.gia, `DATSAN-${selectedSlotForBooking.san?.MaSan || selectedSlotForBooking.san?.masan || 'DEMO'}`)} 
+                    src={getMockBookingQrSvg(pendingBookingData.total, `DON-${pendingBookingData.bookingId}`)} 
                     alt="Demo Mock QR" 
                     className="w-40 h-40 mx-auto object-contain bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
                   />
-                  <div className="text-[10px] text-slate-500 mt-1">Sàn mô phỏng giữ tiền & trích 10% hoa hồng (Không dùng tiền thật)</div>
+                  <div className="text-xs text-slate-600 mt-2">
+                    Tổng thanh toán mô phỏng: <strong className="text-rose-600 font-black text-base">{Number(pendingBookingData.total).toLocaleString('vi-VN')} đ</strong>
+                  </div>
                 </div>
+
+                {!simulationFailed ? (
+                  <div className="space-y-2">
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => handleExecuteHomeSimulation('SIMULATE_SUCCESS')}
+                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      {isSubmitting ? 'Đang xử lý...' : '🟢 Mô phỏng thanh toán THÀNH CÔNG (SIMULATE_SUCCESS)'}
+                    </button>
+
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE')}
+                      className="w-full py-2.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {isSubmitting ? 'Đang xử lý...' : '🔴 Mô phỏng thanh toán THẤT BÀI (SIMULATE_FAILURE)'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 bg-rose-50 border border-rose-200 rounded-2xl p-3.5">
+                    <div className="text-xs font-bold text-rose-800 text-center">
+                      ⚠️ Mô phỏng thất bại! Khung giờ đang được giữ tạm:
+                    </div>
+
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'SWITCH_CASH')}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                      💵 Chuyển sang Tiền mặt tại sân (Bảo toàn khung giờ)
+                    </button>
+
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'CANCEL')}
+                      className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      ❌ Hủy đơn đặt sân (Giải phóng khung giờ)
+                    </button>
+
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => setSimulationFailed(false)}
+                      className="w-full py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition"
+                    >
+                      🔄 Thử lại mô phỏng
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="space-y-3 mb-4">
-                <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-3 text-xs text-slate-700">
-                  <p className="font-bold text-slate-900 mb-1">Thanh toán 100% tại sân:</p>
-                  <p className="text-[11px] text-slate-600">
-                    Bạn sẽ trả số tiền {Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ trực tiếp cho Chủ sân khi đến sân nhận ca đấu. Hệ thống sẽ ghi nợ 10% hoa hồng vào Sổ Nợ của Chủ sân.
-                  </p>
+              /* BƯỚC 1: CHỌN HÌNH THỨC BAN ĐẦU */
+              <div>
+                <div className="text-center mb-4">
+                  <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                    Thanh Toán Mô Phỏng 100% (DEMO)
+                  </span>
+                  <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận & Đặt Sân</h3>
+                </div>
+
+                <div className="bg-slate-50 rounded-2xl p-4 text-xs space-y-2.5 my-4 border border-slate-200">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Sân thi đấu:</span>
+                    <span className="font-bold text-slate-800">{selectedSlotForBooking.san.TenSan}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Khung giờ:</span>
+                    <span className="font-bold text-emerald-700">{selectedSlotForBooking.slot.start} - {selectedSlotForBooking.slot.end} ({selectedDate})</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-slate-200 items-baseline">
+                    <span className="text-slate-700 font-bold">Tổng thanh toán 100%:</span>
+                    <span className="font-black text-lg text-rose-600">
+                      {Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ
+                    </span>
+                  </div>
+                </div>
+
+                {/* CHỌN PHƯƠNG THỨC */}
+                <div className="grid grid-cols-2 gap-2.5 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('QR')}
+                    className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 ${
+                      paymentMethod === 'QR'
+                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-xs text-slate-900 flex items-center gap-1">
+                        <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Quét mã mô phỏng (DEMO)
+                      </span>
+                      {paymentMethod === 'QR' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                    </div>
+                    <span className="text-[10px] text-slate-500">Thanh toán trực tuyến mô phỏng 100%</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('TIEN_MAT')}
+                    className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 ${
+                      paymentMethod === 'TIEN_MAT'
+                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-xs text-slate-900 flex items-center gap-1">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Tiền mặt
+                      </span>
+                      {paymentMethod === 'TIEN_MAT' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                    </div>
+                    <span className="text-[10px] text-slate-500">Trả 100% tại sân cho chủ (Ghi nợ)</span>
+                  </button>
+                </div>
+
+                {paymentMethod === 'QR' ? (
+                  <div className="space-y-3 mb-4">
+                    <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-3 text-center">
+                      <div className="text-[11px] font-bold text-slate-700 mb-1">Mô phỏng thanh toán trực tuyến DEMO</div>
+                      <p className="text-[10px] text-slate-500">Hệ thống sẽ giữ khung giờ và mở cổng mô phỏng để bạn xác nhận.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mb-4">
+                    <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-3 text-xs text-slate-700">
+                      <p className="font-bold text-slate-900 mb-1">Thanh toán 100% tại sân:</p>
+                      <p className="text-[11px] text-slate-600">
+                        Bạn sẽ trả {Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ trực tiếp cho Chủ sân khi đến sân. Hệ thống ghi nợ hoa hồng 10% cho sàn.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setBookingSuccessModal(false)}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+                  >
+                    Hủy
+                  </button>
+                  <button 
+                    disabled={isSubmitting}
+                    onClick={confirmBookingToSupabase}
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:opacity-50 transition"
+                  >
+                    {isSubmitting ? 'Đang lưu...' : paymentMethod === 'QR' ? 'Tiến hành đặt sân & Mô phỏng QR' : 'Xác nhận đặt sân (Tiền mặt)'}
+                  </button>
                 </div>
               </div>
             )}
-
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setBookingSuccessModal(false)}
-                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
-              >
-                Hủy
-              </button>
-              <button 
-                disabled={isSubmitting}
-                onClick={confirmBookingToSupabase}
-                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:opacity-50 transition"
-              >
-                {isSubmitting ? 'Đang lưu...' : paymentMethod === 'QR' ? 'Xác nhận thanh toán mô phỏng' : 'Xác nhận đặt sân (Tiền mặt)'}
-              </button>
-            </div>
           </div>
         </div>
       )}

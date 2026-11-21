@@ -1209,7 +1209,7 @@ export default function OwnerDashboard({ user, setUser }) {
                   className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  {isSettling ? 'Đang xử lý...' : 'Xác nhận đã chuyển khoản'}
+                  {isSettling ? 'Đang xử lý...' : 'Xác nhận quyết toán mô phỏng (DEMO)'}
                 </button>
               </div>
             </div>
@@ -1341,21 +1341,21 @@ export default function OwnerDashboard({ user, setUser }) {
 
               <div className="space-y-3 mb-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã giao dịch chuyển khoản (FT/Transaction ID)</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã giao dịch mô phỏng (DEMO Transaction ID)</label>
                   <input
                     type="text"
-                    placeholder="Ví dụ: FT26118899 hoặc MB-..."
+                    placeholder="DEMO_REFUND_123456"
                     value={refundTxIdInput}
                     onChange={(e) => setRefundTxIdInput(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
-                    required
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Hệ thống tự động sinh mã giả lập nếu để trống</span>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Link ảnh biên lai chuyển tiền (tùy chọn)</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Ghi chú đối soát mô phỏng (tùy chọn)</label>
                   <input
                     type="text"
-                    placeholder="https://... hoặc để trống nếu đã nhập mã giao dịch"
+                    placeholder="Ghi chú hoàn tiền mô phỏng"
                     value={refundProofUrlInput}
                     onChange={(e) => setRefundProofUrlInput(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-500"

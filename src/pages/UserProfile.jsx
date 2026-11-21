@@ -67,7 +67,11 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
   const [selectedBookingForCancel, setSelectedBookingForCancel] = useState(null);
   const [cancelCheckResult, setCancelCheckResult] = useState(null);
   const [cancelReason, setCancelReason] = useState('Bận việc đột xuất');
-  const [refundBank, setRefundBank] = useState({ nganhang: 'MB Bank', sotaikhoan: '', tentaikhoan: '' });
+  const [refundBank, setRefundBank] = useState({
+    nganhang: 'Ngân Hàng Mô Phỏng DatSan (DEMO)',
+    sotaikhoan: 'DEMO-888888',
+    tentaikhoan: 'KHACH HANG (DEMO)'
+  });
   const [isCheckingCancel, setIsCheckingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
@@ -173,16 +177,16 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
     setCancelError('');
     try {
       const isOnline = cancelCheckResult?.isOnlinePaid;
-      if (isOnline && (!refundBank.sotaikhoan || !refundBank.tentaikhoan)) {
-        throw new Error('Vui lòng nhập số tài khoản và tên chủ tài khoản nhận hoàn tiền');
-      }
+      const effectiveAccount = refundBank.sotaikhoan?.trim() || 'DEMO-888888';
+      const effectiveHolder = refundBank.tentaikhoan?.trim() || user?.hoten || 'KHACH HANG (DEMO)';
+      const effectiveBank = refundBank.nganhang || 'Ngân Hàng Mô Phỏng DatSan (DEMO)';
 
       const res = await cancelCustomerBooking({
         bookingId: selectedBookingForCancel.madatsan,
         reason: cancelReason,
-        bankName: isOnline ? refundBank.nganhang : undefined,
-        bankAccount: isOnline ? refundBank.sotaikhoan : undefined,
-        accountHolder: isOnline ? refundBank.tentaikhoan : undefined
+        bankName: isOnline ? effectiveBank : undefined,
+        bankAccount: isOnline ? effectiveAccount : undefined,
+        accountHolder: isOnline ? effectiveHolder : undefined
       });
 
       if (res?.success) {
@@ -800,55 +804,52 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                   </div>
                 )}
 
-                {/* Form tài khoản nhận hoàn tiền nếu đã thanh toán Online */}
+                {/* Form tài khoản nhận hoàn tiền nếu đã thanh toán Online (DEMO) */}
                 {cancelCheckResult.eligible && cancelCheckResult.isOnlinePaid && (
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                     <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase">
                       <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Tài khoản ngân hàng nhận tiền hoàn</span>
+                      <span>Tài khoản nhận hoàn tiền mô phỏng (DEMO)</span>
+                    </div>
+
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800">
+                      <strong>⚡ LƯU Ý DEMO:</strong> Không cung cấp số tài khoản ngân hàng thật. Hệ thống đã tự động điền tài khoản giả lập để hoàn tất quy trình đối soát mô phỏng 100%.
                     </div>
 
                     <div className="grid grid-cols-1 gap-2.5 text-xs">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Ngân hàng</label>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Ngân hàng mô phỏng</label>
                         <select
                           value={refundBank.nganhang}
                           onChange={(e) => setRefundBank({ ...refundBank, nganhang: e.target.value })}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
                         >
-                          <option value="MB Bank">MB Bank (Quân Đội)</option>
-                          <option value="Vietcombank">Vietcombank</option>
-                          <option value="Techcombank">Techcombank</option>
-                          <option value="ACB">ACB (Á Châu)</option>
-                          <option value="VPBank">VPBank</option>
-                          <option value="TPBank">TPBank</option>
-                          <option value="BIDV">BIDV</option>
-                          <option value="Vietinbank">Vietinbank</option>
-                          <option value="Agribank">Agribank</option>
+                          <option value="Ngân Hàng Mô Phỏng DatSan (DEMO)">Ngân Hàng Mô Phỏng DatSan (DEMO - Khuyên dùng)</option>
+                          <option value="MB Bank (Mô phỏng)">MB Bank (Mô phỏng)</option>
+                          <option value="Vietcombank (Mô phỏng)">Vietcombank (Mô phỏng)</option>
+                          <option value="Techcombank (Mô phỏng)">Techcombank (Mô phỏng)</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Số tài khoản</label>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Số tài khoản mô phỏng</label>
                         <input
                           type="text"
-                          placeholder="Ví dụ: 0901234567"
+                          placeholder="DEMO-888888"
                           value={refundBank.sotaikhoan}
                           onChange={(e) => setRefundBank({ ...refundBank, sotaikhoan: e.target.value })}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
-                          required
                         />
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Tên chủ tài khoản (In hoa không dấu)</label>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Tên người thụ hưởng (Mô phỏng)</label>
                         <input
                           type="text"
-                          placeholder="NGUYEN VAN A"
+                          placeholder="KHACH HANG (DEMO)"
                           value={refundBank.tentaikhoan}
                           onChange={(e) => setRefundBank({ ...refundBank, tentaikhoan: e.target.value.toUpperCase() })}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
-                          required
                         />
                       </div>
                     </div>

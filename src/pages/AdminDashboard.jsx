@@ -1012,10 +1012,10 @@ export default function AdminDashboard({ user, setUser }) {
                     <div>
                       <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-600" />
-                        Yêu Cầu Nộp Ký Quỹ Chờ Đối Soát Ngân Hàng ({pendingDepositRequests.length})
+                        Yêu Cầu Nộp Ký Quỹ Chờ Đối Soát Mô Phỏng (DEMO) ({pendingDepositRequests.length})
                       </h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Kiểm tra tài khoản ngân hàng của sàn, đối soát đúng số tiền 1.000.000đ và nội dung trước khi duyệt.
+                        Đối soát giao dịch nộp ký quỹ mô phỏng 1.000.000đ trước khi kích hoạt trạng thái ĐÃ KÝ QUỸ cho Chủ Sân.
                       </p>
                     </div>
                     <button
@@ -1156,6 +1156,12 @@ export default function AdminDashboard({ user, setUser }) {
             {/* TAB 5: QUẢN LÝ HOÀN TIỀN & TRANH CHẤP (FEATURE 02) */}
             {activeTab === 'REFUNDS' && (
               <div className="space-y-6">
+                {/* THÔNG BÁO DEMO FINANCIAL MODE */}
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 text-xs text-amber-900 flex items-center gap-2.5">
+                  <span className="px-2 py-0.5 bg-amber-200 text-amber-900 font-black rounded-lg text-[10px]">DEMO</span>
+                  <span>Hệ thống hoạt động ở chế độ mô phỏng tài chính. Mọi số dư, hoàn tiền và khấu trừ ký quỹ đều là dữ liệu giả lập.</span>
+                </div>
+
                 {/* THỐNG KÊ HOÀN TIỀN */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
