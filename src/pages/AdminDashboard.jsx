@@ -3,14 +3,20 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, Users, Building2, CheckCircle2, XCircle, 
   RefreshCw, MapPin, Tag, UserCheck, Search, DollarSign, Eye, X, Award, CheckSquare,
-  AlertTriangle, ShieldAlert, ArrowRight, Bell, Lock, LogOut, ArrowLeft, Loader2
+  AlertTriangle, ShieldAlert, ArrowRight, Bell, Lock, LogOut, ArrowLeft, Loader2,
+  Clock, CreditCard, Shield
 } from 'lucide-react';
 import { 
   fetchAdminOverview, 
   updateAdminFieldStatus, 
   updateAdminUserRole, 
   sendNotification, 
-  broadcastAuthChange 
+  broadcastAuthChange,
+  fetchAdminDeposits,
+  verifyAdminDeposit,
+  settleAdminDepositRefund,
+  fetchAdminRefunds,
+  resolveAdminRefundDispute
 } from '../supabaseClient';
 import Header from '../components/Header';
 import LoginModal from '../components/LoginModal';
@@ -48,12 +54,12 @@ export default function AdminDashboard({ user, setUser }) {
 
   const [activeTab, setActiveTab] = useState(() => {
     const tabParam = new URLSearchParams(window.location.search).get('tab');
-    return tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS'].includes(tabParam) ? tabParam : 'PENDING_FIELDS';
+    return tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS', 'DEPOSITS', 'REFUNDS'].includes(tabParam) ? tabParam : 'PENDING_FIELDS';
   });
 
   useEffect(() => {
     const tabParam = new URLSearchParams(location.search).get('tab');
-    if (tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS'].includes(tabParam)) {
+    if (tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS', 'DEPOSITS', 'REFUNDS'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [location.search]);
@@ -74,6 +80,27 @@ export default function AdminDashboard({ user, setUser }) {
     cashCommissionSettled: 0,
     cashCommissionPending: 0
   });
+
+  // FEATURE 01: States Quản lý Ký Quỹ Chủ Sân
+  const [depositsList, setDepositsList] = useState([]);
+  const [pendingDepositRequests, setPendingDepositRequests] = useState([]);
+  const [loadingDeposits, setLoadingDeposits] = useState(false);
+  const [isVerifyingDeposit, setIsVerifyingDeposit] = useState(false);
+
+  // FEATURE 02: States Quản lý Hoàn Tiền & Tranh Chấp
+  const [adminRefunds, setAdminRefunds] = useState([]);
+  const [adminOverdueRefunds, setAdminOverdueRefunds] = useState([]);
+  const [adminDisputes, setAdminDisputes] = useState([]);
+  const [loadingAdminRefunds, setLoadingAdminRefunds] = useState(false);
+  const [isResolvingDispute, setIsResolvingDispute] = useState(false);
+
+  // Helper định dạng tiền tệ an toàn (chống hiển thị NaN đ hoặc giấu lỗi bằng 0đ)
+  const formatMoneySafe = (val) => {
+    if (val === null || val === undefined || val === '' || isNaN(Number(val))) {
+      return 'Chưa xác định';
+    }
+    return `${Number(val).toLocaleString('vi-VN')} đ`;
+  };
 
   // States Tìm Kiếm & Modal
   const [searchTerm, setSearchTerm] = useState('');
@@ -154,14 +181,101 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
+  // Tải danh sách Ký Quỹ Chủ Sân (FEATURE 01)
+  const fetchAdminDepositsData = async () => {
+    try {
+      setLoadingDeposits(true);
+      const res = await fetchAdminDeposits();
+      if (res?.deposits) setDepositsList(res.deposits);
+      if (res?.pendingRequests) setPendingDepositRequests(res.pendingRequests);
+    } catch (err) {
+      console.warn('Lỗi tải danh sách ký quỹ:', err);
+    } finally {
+      setLoadingDeposits(false);
+    }
+  };
+
+  // Tải danh sách Hoàn Tiền & Tranh Chấp (FEATURE 02)
+  const fetchAdminRefundsData = async () => {
+    try {
+      setLoadingAdminRefunds(true);
+      const res = await fetchAdminRefunds();
+      if (res?.allRefunds) setAdminRefunds(res.allRefunds);
+      if (res?.overdueRefunds) setAdminOverdueRefunds(res.overdueRefunds);
+      if (res?.disputes) setAdminDisputes(res.disputes);
+    } catch (err) {
+      console.warn('Lỗi tải danh sách hoàn tiền:', err);
+    } finally {
+      setLoadingAdminRefunds(false);
+    }
+  };
+
   useEffect(() => {
     const role = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
     if (currentUser && role === 'ADMIN') {
       fetchAdminData();
+      fetchAdminDepositsData();
+      fetchAdminRefundsData();
     } else {
       setLoading(false);
     }
   }, [currentUser]);
+
+  // Admin Xác minh nhận tiền Ký Quỹ & Phê duyệt (FEATURE 01)
+  const handleVerifyDeposit = async (transactionId, isApproved) => {
+    let notes = isApproved ? 'Admin xác nhận đã nhận 1.000.000đ qua ngân hàng' : '';
+    if (!isApproved) {
+      const input = window.prompt('Nhập lý do từ chối yêu cầu ký quỹ:', 'Không tìm thấy giao dịch ngân hàng khớp nội dung');
+      if (input === null) return;
+      notes = input.trim() || 'Giao dịch không khớp';
+    }
+
+    try {
+      setIsVerifyingDeposit(true);
+      const res = await verifyAdminDeposit({ transactionId, isApproved, notes });
+      if (res?.success) {
+        alert(isApproved ? '✅ Đã xác minh nhận tiền ký quỹ & kích hoạt Chủ Sân thành công!' : 'Đã từ chối yêu cầu.');
+        fetchAdminDepositsData();
+        fetchAdminData();
+      } else {
+        alert('Lỗi: ' + (res?.error || 'Thao tác thất bại'));
+      }
+    } catch (err) {
+      alert('Lỗi xác minh: ' + err.message);
+    } finally {
+      setIsVerifyingDeposit(false);
+    }
+  };
+
+  // Admin Giải quyết Tranh Chấp Hoàn Tiền (FEATURE 02)
+  const handleResolveDispute = async (refundId, resolution) => {
+    const confirmMsg = resolution === 'PLATFORM_ESCROW_DEDUCTION'
+      ? 'XÁC NHẬN: Trừ 100% tiền hoàn từ Khoản Ký Quỹ (1.000.000đ) của Chủ Sân để hoàn trả Khách Hàng?'
+      : 'XÁC NHẬN: Bác bỏ khiếu nại của khách (Chủ sân đã chuyển khoản đúng & hợp lệ)?';
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setIsResolvingDispute(true);
+      const res = await resolveAdminRefundDispute(refundId, {
+        resolution,
+        notes: resolution === 'PLATFORM_ESCROW_DEDUCTION'
+          ? 'Admin quyết định trừ quỹ bảo đảm của chủ sân bồi hoàn cho khách'
+          : 'Admin bác bỏ khiếu nại sau khi đối soát bằng chứng chuyển tiền'
+      });
+
+      if (res?.success) {
+        alert('✅ Đã xử lý tranh chấp hoàn tiền thành công!');
+        fetchAdminRefundsData();
+        fetchAdminDepositsData();
+      } else {
+        alert('Lỗi: ' + (res?.error || 'Thao tác thất bại'));
+      }
+    } catch (err) {
+      alert('Lỗi giải quyết: ' + err.message);
+    } finally {
+      setIsResolvingDispute(false);
+    }
+  };
 
   // Gửi thông báo nhắc nộp hoa hồng cho Chủ Sân
   const handleSendDebtReminder = async (owner, debtAmount, isOverdue) => {
@@ -296,7 +410,7 @@ export default function AdminDashboard({ user, setUser }) {
       <main className="max-w-[1440px] mx-auto px-6 pt-8">
         
         {/* HEADER ADMIN */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-rose-600 mb-1">
               <ShieldCheck className="w-4 h-4" />
@@ -313,6 +427,29 @@ export default function AdminDashboard({ user, setUser }) {
             >
               <RefreshCw className="w-4 h-4" /> Làm mới dữ liệu
             </button>
+          </div>
+        </div>
+
+        {/* BANNER CHẾ ĐỘ MÔ PHỎNG TÀI CHÍNH (DEMO FINANCIAL MODE) */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-amber-500/10 via-amber-400/15 to-emerald-500/10 border-2 border-amber-400/60 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-sm shrink-0">
+              ⚡
+            </div>
+            <div>
+              <div className="text-sm font-black text-amber-950 flex items-center gap-2">
+                KHU VỰC QUẢN TRỊ TÀI CHÍNH MÔ PHỎNG (DEMO FINANCIAL MODE)
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-300">
+                  SIMULATION ACTIVE
+                </span>
+              </div>
+              <div className="text-xs text-amber-900/80 mt-0.5">
+                Mọi giao dịch ký quỹ, hoàn tiền, công nợ hoa hồng 10% và chuyển khoản đều được giả lập an toàn trên hệ thống. Không có luồng tiền thật.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-800 bg-amber-100/80 px-3 py-1.5 rounded-xl shrink-0">
+            <span>STAGING / DEMO</span>
           </div>
         </div>
 
@@ -386,7 +523,7 @@ export default function AdminDashboard({ user, setUser }) {
           {/* Ô THỐNG KÊ DOANH THU ADMIN/HOA HỒNG SÀN */}
           <div className="bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-2xl p-5 shadow-md border border-emerald-900 col-span-1 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Doanh Thu Hoa Hồng (10%)</span>
+              <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Doanh Thu Hoa Hồng (10% Demo)</span>
               <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">
                 <DollarSign className="w-4 h-4" />
               </div>
@@ -443,6 +580,24 @@ export default function AdminDashboard({ user, setUser }) {
                 }`}
               >
                 Quản Lý Người Dùng ({userList.length})
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('DEPOSITS'); setSearchTerm(''); }}
+                className={`pb-4 text-xs font-extrabold transition relative whitespace-nowrap ${
+                  activeTab === 'DEPOSITS' ? 'text-purple-600 border-b-2 border-purple-500' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Ký Quỹ Chủ Sân (Demo) ({pendingDepositRequests.length > 0 ? `Chờ duyệt: ${pendingDepositRequests.length}` : depositsList.length})
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('REFUNDS'); setSearchTerm(''); }}
+                className={`pb-4 text-xs font-extrabold transition relative whitespace-nowrap ${
+                  activeTab === 'REFUNDS' ? 'text-rose-600 border-b-2 border-rose-500' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Hoàn Tiền & Tranh Chấp (Demo) ({adminDisputes.length > 0 ? `Tranh chấp: ${adminDisputes.length}` : adminRefunds.length})
               </button>
             </div>
 
@@ -818,6 +973,374 @@ export default function AdminDashboard({ user, setUser }) {
                       })}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: QUẢN LÝ KÝ QUỸ CHỦ SÂN (FEATURE 01) */}
+            {activeTab === 'DEPOSITS' && (
+              <div className="space-y-6">
+                {/* THỐNG KÊ QUỸ BẢO ĐẢM */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Tổng Chủ Sân Quản Lý</span>
+                    <div className="text-xl font-black text-slate-900 mt-1">{depositsList.length} tài khoản</div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Đã Ký Quỹ Hợp Lệ</span>
+                    <div className="text-xl font-black text-emerald-600 mt-1">
+                      {depositsList.filter(d => d.trangthai === 'HOP_LE').length} tài khoản
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Tổng Tiền Quỹ Nắm Giữ (Mô phỏng)</span>
+                    <div className="text-xl font-black text-purple-700 mt-1">
+                      {depositsList.reduce((acc, d) => acc + Number(d.sodu_hientai || 0), 0).toLocaleString('vi-VN')} đ
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Chờ Xác Minh Chuyển Khoản</span>
+                    <div className="text-xl font-black text-amber-600 mt-1">
+                      {pendingDepositRequests.length} yêu cầu
+                    </div>
+                  </div>
+                </div>
+
+                {/* KHỐI 1: YÊU CẦU NỘP KÝ QUỸ CHỜ XÁC MINH */}
+                <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        Yêu Cầu Nộp Ký Quỹ Chờ Đối Soát Ngân Hàng ({pendingDepositRequests.length})
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Kiểm tra tài khoản ngân hàng của sàn, đối soát đúng số tiền 1.000.000đ và nội dung trước khi duyệt.
+                      </p>
+                    </div>
+                    <button
+                      onClick={fetchAdminDepositsData}
+                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-50 flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingDeposits ? 'animate-spin' : ''}`} /> Làm mới
+                    </button>
+                  </div>
+
+                  {pendingDepositRequests.length === 0 ? (
+                    <div className="py-8 text-center text-xs font-bold text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                      Không có yêu cầu nộp ký quỹ nào đang chờ duyệt.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto bg-white rounded-xl border border-slate-200">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase bg-slate-50">
+                            <th className="py-3 px-4">Mã GD</th>
+                            <th className="py-3 px-4">Chủ Sân ID</th>
+                            <th className="py-3 px-4">Số Tiền</th>
+                            <th className="py-3 px-4">Nội Dung Chuyển Khoản</th>
+                            <th className="py-3 px-4">Mã Tham Chiếu (Chủ sân gửi)</th>
+                            <th className="py-3 px-4">Thời Gian</th>
+                            <th className="py-3 px-4 text-right">Thao Tác Duyệt</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {pendingDepositRequests.map((req) => (
+                            <tr key={req.id} className="hover:bg-slate-50">
+                              <td className="py-3 px-4 font-bold text-slate-900">#{req.id}</td>
+                              <td className="py-3 px-4 font-bold text-amber-700">Chủ Sân #{req.machusan}</td>
+                              <td className="py-3 px-4 font-black text-emerald-600">
+                                {Number(req.sotien).toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="py-3 px-4 font-mono text-[11px] bg-slate-50 px-2 rounded">
+                                {req.noi_dung_chuyen_khoan}
+                              </td>
+                              <td className="py-3 px-4 font-bold text-slate-700">
+                                {req.bank_tx_id || 'Chưa cung cấp'}
+                              </td>
+                              <td className="py-3 px-4 text-[11px] text-slate-500">
+                                {new Date(req.created_at).toLocaleString('vi-VN')}
+                              </td>
+                              <td className="py-3 px-4 text-right space-x-2 whitespace-nowrap">
+                                <button
+                                  disabled={isVerifyingDeposit}
+                                  onClick={() => handleVerifyDeposit(req.id, true)}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                                >
+                                  ✓ Xác nhận đã nhận tiền & Duyệt
+                                </button>
+                                <button
+                                  disabled={isVerifyingDeposit}
+                                  onClick={() => handleVerifyDeposit(req.id, false)}
+                                  className="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 font-bold text-xs rounded-xl transition"
+                                >
+                                  ✕ Từ chối
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* KHỐI 2: TOÀN BỘ DANH SÁCH TÀI KHOẢN KÝ QUỸ */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                  <h4 className="font-extrabold text-sm text-slate-900 mb-3">
+                    Danh Sách Tài Khoản Ký Quỹ Toàn Hệ Thống ({depositsList.length})
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase bg-slate-50">
+                          <th className="py-3 px-4">Chủ Sân ID</th>
+                          <th className="py-3 px-4">Số Dư Quỹ Hiện Tại</th>
+                          <th className="py-3 px-4">Trạng Thái Ký Quỹ</th>
+                          <th className="py-3 px-4">Phân Loại Chính Sách</th>
+                          <th className="py-3 px-4">Ngày Cập Nhật</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {depositsList.map((dp) => (
+                          <tr key={dp.makyquy || dp.id} className="hover:bg-slate-50">
+                            <td className="py-3 px-4 font-bold text-slate-900">Chủ Sân #{dp.machusan}</td>
+                            <td className="py-3 px-4 font-black text-emerald-700">
+                              {formatMoneySafe(dp.sodu_hientai)}
+                            </td>
+                            <td className="py-3 px-4">
+                              {dp.trangthai === 'HOP_LE' && (
+                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                                  ✓ Hợp lệ (1.000.000đ)
+                                </span>
+                              )}
+                              {dp.trangthai === 'CHO_XAC_MINH' && (
+                                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">
+                                  ⏳ Chờ xác minh
+                                </span>
+                              )}
+                              {dp.trangthai === 'CHUA_KY_QUY' && (
+                                <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">
+                                  ✕ Chưa ký quỹ (Khóa nhận đơn)
+                                </span>
+                              )}
+                              {dp.trangthai === 'DA_HOAN' && (
+                                <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full">
+                                  Đã tất toán hoàn trả
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {dp.is_legacy ? (
+                                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                  Chủ sân hiện hữu (Di sản)
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                                  Chủ sân mới
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-[11px] text-slate-500">
+                              {new Date(dp.updated_at).toLocaleString('vi-VN')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: QUẢN LÝ HOÀN TIỀN & TRANH CHẤP (FEATURE 02) */}
+            {activeTab === 'REFUNDS' && (
+              <div className="space-y-6">
+                {/* THỐNG KÊ HOÀN TIỀN */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Tổng Yêu Cầu Hoàn Tiền</span>
+                    <div className="text-xl font-black text-slate-900 mt-1">{adminRefunds.length} đơn</div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Chờ Chủ Sân Chuyển</span>
+                    <div className="text-xl font-black text-amber-600 mt-1">
+                      {adminRefunds.filter(r => r.trangthai === 'CHO_HOAN').length} đơn
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Quá Hạn 24 Giờ</span>
+                    <div className="text-xl font-black text-rose-600 mt-1">
+                      {adminOverdueRefunds.length} đơn
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Khiếu Nại Tranh Chấp</span>
+                    <div className="text-xl font-black text-purple-700 mt-1">
+                      {adminDisputes.length} vụ
+                    </div>
+                  </div>
+                </div>
+
+                {/* KHỐI 1: TRANH CHẤP CẦN ADMIN CAN THIỆP */}
+                {adminDisputes.length > 0 && (
+                  <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5">
+                    <h4 className="font-extrabold text-sm text-rose-900 mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-600" />
+                      Tranh Chấp Hoàn Tiền Đang Mở ({adminDisputes.length})
+                    </h4>
+                    <p className="text-xs text-rose-700 mb-4">
+                      Khách hàng khiếu nại chưa nhận được tiền hoàn hoặc có sai lệch. Admin có thẩm quyền trừ trực tiếp từ Khoản Ký Quỹ 1.000.000đ của Chủ Sân để bồi hoàn cho Khách.
+                    </p>
+
+                    <div className="space-y-3">
+                      {adminDisputes.map((dp) => {
+                        const disputeId = dp.mahoantien || dp.id;
+                        const disputeAmount = dp.sotien_canhoan ?? dp.sotien_hoan;
+                        const receiverName = dp.chutaikhoan_nhan || dp.tentaikhoan_nhan || '—';
+                        const ownerTxId = dp.magiaodich_owner || dp.chusan_nganhang_txid || 'Không có';
+                        const disputeReason = dp.lydo_tranhchap || dp.khieunai_lydo || 'Chưa nhận được tiền';
+
+                        return (
+                        <div key={disputeId} className="bg-white rounded-xl border border-rose-200 p-4 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                            <div>
+                              <span className="text-xs font-black text-slate-900">Yêu cầu hoàn tiền #{disputeId} (Đơn #{dp.madatsan})</span>
+                              <span className="ml-2 text-xs text-slate-500">Chủ sân #{dp.machusan} • Khách #{dp.makhachhang}</span>
+                            </div>
+                            <div className="text-sm font-black text-rose-600">
+                              Số tiền: {formatMoneySafe(disputeAmount)}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div className="bg-slate-50 p-2.5 rounded-lg">
+                              <span className="font-bold text-slate-500 block text-[10px]">Lý do khách khiếu nại:</span>
+                              <p className="font-medium text-slate-800 mt-0.5">{disputeReason}</p>
+                            </div>
+                            <div className="bg-slate-50 p-2.5 rounded-lg">
+                              <span className="font-bold text-slate-500 block text-[10px]">Tài khoản thụ hưởng:</span>
+                              <p className="font-medium text-slate-800 mt-0.5">{dp.nganhang_nhan || 'MB Bank'} - {dp.sotaikhoan_nhan || '—'} ({receiverName})</p>
+                              <span className="text-[10px] text-slate-400">Mã GD chủ sân gửi: {ownerTxId}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              disabled={isResolvingDispute}
+                              onClick={() => handleResolveDispute(disputeId, 'PLATFORM_ESCROW_DEDUCTION')}
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                            >
+                              ⚡ Trừ Quỹ Ký Quỹ Chủ Sân Bồi Hoàn Khách
+                            </button>
+                            <button
+                              disabled={isResolvingDispute}
+                              onClick={() => handleResolveDispute(disputeId, 'DISMISS_DISPUTE')}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                            >
+                              Bác Bỏ Khiếu Nại
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    </div>
+                  </div>
+                )}
+
+                {/* KHỐI 2: TOÀN BỘ DANH SÁCH HOÀN TIỀN */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-extrabold text-sm text-slate-900">
+                      Toàn Bộ Lịch Sử Hoàn Tiền ({adminRefunds.length})
+                    </h4>
+                    <button
+                      onClick={fetchAdminRefundsData}
+                      className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-100 flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingAdminRefunds ? 'animate-spin' : ''}`} /> Làm mới
+                    </button>
+                  </div>
+
+                  {adminRefunds.length === 0 ? (
+                    <div className="py-12 text-center text-xs font-bold text-slate-400">
+                      Chưa có đơn hoàn tiền nào trong hệ thống.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase bg-slate-50">
+                            <th className="py-3 px-4">Mã Đơn / Yêu Cầu</th>
+                            <th className="py-3 px-4">Chủ Sân / Khách Hàng</th>
+                            <th className="py-3 px-4">Số Tiền Hoàn (100%)</th>
+                            <th className="py-3 px-4">Tài Khoản Nhận</th>
+                            <th className="py-3 px-4">Hạn Xử Lý (24h)</th>
+                            <th className="py-3 px-4">Trạng Thái</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {adminRefunds.map((rf) => {
+                            const refundId = rf.mahoantien || rf.id;
+                            const refundAmount = rf.sotien_canhoan ?? rf.sotien_hoan;
+                            const receiverName = rf.chutaikhoan_nhan || rf.tentaikhoan_nhan || '—';
+                            const isOverdue = (rf.trangthai === 'CHO_HOAN' || rf.trangthai === 'QUA_HAN') && new Date(rf.han_xuly) < new Date();
+                            return (
+                              <tr key={refundId} className="hover:bg-slate-50">
+                                <td className="py-3 px-4">
+                                  <span className="font-bold text-slate-900">Đơn #{rf.madatsan}</span>
+                                  <div className="text-[10px] text-slate-400">YC #{refundId}</div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="font-bold text-slate-800">Chủ sân #{rf.machusan}</div>
+                                  <div className="text-[10px] text-slate-500">Khách #{rf.makhachhang}</div>
+                                </td>
+                                <td className="py-3 px-4 font-black text-rose-600">
+                                  {formatMoneySafe(refundAmount)}
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="font-bold text-slate-800">{rf.nganhang_nhan || 'MB Bank'} - {rf.sotaikhoan_nhan || '—'}</div>
+                                  <div className="text-[10px] text-slate-500">{receiverName}</div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className={`text-[11px] font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-700'}`}>
+                                    {new Date(rf.han_xuly).toLocaleString('vi-VN')}
+                                  </div>
+                                  {isOverdue && (
+                                    <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-1 py-0.5 rounded">
+                                      Quá hạn 24h
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4">
+                                  {rf.trangthai === 'CHO_HOAN' && (
+                                    <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">
+                                      ⏳ Chờ chủ sân chuyển
+                                    </span>
+                                  )}
+                                  {rf.trangthai === 'DA_CHUYEN' && (
+                                    <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full">
+                                      Chủ sân đã chuyển
+                                    </span>
+                                  )}
+                                  {rf.trangthai === 'DA_NHAN' && (
+                                    <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                                      ✓ Đã hoàn tất 100%
+                                    </span>
+                                  )}
+                                  {rf.trangthai === 'TRANH_CHAP' && (
+                                    <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">
+                                      ⚠️ Tranh chấp
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

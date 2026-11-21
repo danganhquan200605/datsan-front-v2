@@ -43,6 +43,13 @@ function ProtectedInternalRoute({ allowedRoles, user, setUser, children }) {
 }
 
 function App() {
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '[::1]' ||
+    Boolean(import.meta.env?.DEV)
+  );
+
   // Đọc dữ liệu tài khoản từ sessionStorage (tắt tab/trình duyệt sẽ tự đăng xuất về Guest)
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
 
@@ -57,6 +64,14 @@ function App() {
 
   return (
     <Router>
+      {/* NHÃN BẢO VỆ MÔI TRƯỜNG TRÊN LOCALHOST: STAGING / DEMO */}
+      {isLocalhost && (
+        <aside aria-label="Môi trường thử nghiệm" className="bg-amber-400 text-slate-900 border-b border-amber-500 text-xs font-bold py-1.5 px-4 text-center sticky top-0 z-50 shadow-sm flex items-center justify-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
+          <span className="bg-slate-900 text-amber-300 px-2 py-0.5 rounded text-[10px] font-black tracking-wider uppercase">LOCAL ENVIRONMENT</span>
+          <span>⚡ <strong>STAGING / DEMO</strong> — HỆ THỐNG ĐANG KẾT NỐI SUPABASE STAGING & TIỀN MÔ PHỎNG ⚡</span>
+        </aside>
+      )}
       <Routes>
         {/* 1. Luồng Khách Hàng (Customer Flow) */}
         <Route path="/" element={<Home user={currentUser} setUser={setCurrentUser} />} />

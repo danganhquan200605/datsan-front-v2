@@ -6,7 +6,7 @@ import {
   Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X,
   QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg } from '../supabaseClient';
 import Header from '../components/Header';
 
 const DEFAULT_IMAGES = [
@@ -826,13 +826,13 @@ export default function Home({ user, setUser }) {
             {paymentMethod === 'QR' ? (
               <div className="space-y-3 mb-4">
                 <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-3 text-center">
-                  <div className="text-[11px] font-bold text-slate-700 mb-1.5">Quét mã VietQR (MBBank 0901111111)</div>
+                  <div className="text-[11px] font-bold text-slate-700 mb-1.5">Mã QR Thanh Toán Mô Phỏng (DEMO)</div>
                   <img 
-                    src={`https://img.vietqr.io/image/970422-0901111111-compact2.png?amount=${selectedSlotForBooking.gia}&addInfo=DATSAN%20${selectedSlotForBooking.san.MaSan}&accountName=DATSAN%20ONLINE`} 
-                    alt="VietQR MBBank" 
+                    src={getMockBookingQrSvg(selectedSlotForBooking.gia, `DATSAN-${selectedSlotForBooking.san?.MaSan || selectedSlotForBooking.san?.masan || 'DEMO'}`)} 
+                    alt="Demo Mock QR" 
                     className="w-40 h-40 mx-auto object-contain bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
                   />
-                  <div className="text-[10px] text-slate-500 mt-1">Sàn tự động giữ tiền & trích 10% hoa hồng</div>
+                  <div className="text-[10px] text-slate-500 mt-1">Sàn mô phỏng giữ tiền & trích 10% hoa hồng (Không dùng tiền thật)</div>
                 </div>
               </div>
             ) : (
@@ -858,7 +858,7 @@ export default function Home({ user, setUser }) {
                 onClick={confirmBookingToSupabase}
                 className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:opacity-50 transition"
               >
-                {isSubmitting ? 'Đang lưu...' : paymentMethod === 'QR' ? 'Xác nhận đã thanh toán VietQR' : 'Xác nhận đặt sân (Tiền mặt)'}
+                {isSubmitting ? 'Đang lưu...' : paymentMethod === 'QR' ? 'Xác nhận thanh toán mô phỏng' : 'Xác nhận đặt sân (Tiền mặt)'}
               </button>
             </div>
           </div>

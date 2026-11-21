@@ -3,9 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { 
   User, Phone, Mail, Shield, Calendar, Clock, MapPin, 
   Star, CheckCircle2, AlertCircle, XCircle, ChevronLeft, 
-  Edit3, Save, MessageSquare, ExternalLink, Award, ArrowRight
+  Edit3, Save, MessageSquare, ExternalLink, Award, ArrowRight,
+  AlertTriangle, RefreshCw, DollarSign, CreditCard
 } from 'lucide-react';
-import { supabase, broadcastAuthChange } from '../supabaseClient';
+import { 
+  supabase, 
+  broadcastAuthChange, 
+  checkCustomerCancellation, 
+  cancelCustomerBooking, 
+  confirmCustomerRefundReceived,
+  fetchCustomerRefunds 
+} from '../supabaseClient';
 import Header from '../components/Header';
 
 export default function UserProfile({ user: propUser, setUser: propSetUser }) {
@@ -52,6 +60,17 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
   const [ratingComment, setRatingComment] = useState('');
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [evaluatedBookings, setEvaluatedBookings] = useState([]);
+
+  // 5. Customer Self-Cancellation & Refund States
+  const [customerRefunds, setCustomerRefunds] = useState([]);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [selectedBookingForCancel, setSelectedBookingForCancel] = useState(null);
+  const [cancelCheckResult, setCancelCheckResult] = useState(null);
+  const [cancelReason, setCancelReason] = useState('Bận việc đột xuất');
+  const [refundBank, setRefundBank] = useState({ nganhang: 'MB Bank', sotaikhoan: '', tentaikhoan: '' });
+  const [isCheckingCancel, setIsCheckingCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   // Tải danh sách đơn đặt sân từ Supabase
   const fetchUserBookings = async () => {
@@ -102,6 +121,16 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
         setEvaluatedBookings(reviewsData.map(r => r.madatsan));
       }
 
+      // Tải danh sách hoàn tiền
+      try {
+        const refundRes = await fetchCustomerRefunds();
+        if (refundRes?.refunds) {
+          setCustomerRefunds(refundRes.refunds);
+        }
+      } catch (rErr) {
+        console.warn('Lỗi tải danh sách hoàn tiền:', rErr);
+      }
+
     } catch (err) {
       console.error('Lỗi lấy lịch sử đặt sân:', err);
     } finally {
@@ -113,6 +142,84 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
     const initialFetch = window.setTimeout(fetchUserBookings, 0);
     return () => window.clearTimeout(initialFetch);
   }, []);
+
+  // Xử lý Mở Modal Hủy Sân & Kiểm Tra Thời Hạn
+  const handleOpenCancelModal = async (booking) => {
+    setSelectedBookingForCancel(booking);
+    setShowCancelModal(true);
+    setIsCheckingCancel(true);
+    setCancelError('');
+    setCancelCheckResult(null);
+    try {
+      const res = await checkCustomerCancellation(booking.madatsan);
+      setCancelCheckResult(res);
+      if (res?.isOnlinePaid) {
+        setRefundBank(prev => ({
+          ...prev,
+          tentaikhoan: user?.HoTen || user?.hoten || ''
+        }));
+      }
+    } catch (err) {
+      setCancelError(err?.message || 'Lỗi kiểm tra điều kiện hủy');
+    } finally {
+      setIsCheckingCancel(false);
+    }
+  };
+
+  // Thực hiện Hủy Sân
+  const handleExecuteCancel = async () => {
+    if (!selectedBookingForCancel) return;
+    setIsCancelling(true);
+    setCancelError('');
+    try {
+      const isOnline = cancelCheckResult?.isOnlinePaid;
+      if (isOnline && (!refundBank.sotaikhoan || !refundBank.tentaikhoan)) {
+        throw new Error('Vui lòng nhập số tài khoản và tên chủ tài khoản nhận hoàn tiền');
+      }
+
+      const res = await cancelCustomerBooking({
+        bookingId: selectedBookingForCancel.madatsan,
+        reason: cancelReason,
+        bankName: isOnline ? refundBank.nganhang : undefined,
+        bankAccount: isOnline ? refundBank.sotaikhoan : undefined,
+        accountHolder: isOnline ? refundBank.tentaikhoan : undefined
+      });
+
+      if (res?.success) {
+        alert('✅ Hủy đơn đặt sân thành công!' + (isOnline ? ' Yêu cầu hoàn tiền đã gửi đến Chủ sân (thời hạn 24h).' : ''));
+        setShowCancelModal(false);
+        fetchUserBookings();
+      } else {
+        throw new Error(res?.reason || 'Hủy thất bại');
+      }
+    } catch (err) {
+      setCancelError(err?.message || 'Lỗi khi hủy đặt sân');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // Khách xác nhận nhận tiền hoàn hoặc khiếu nại tranh chấp
+  const handleConfirmRefund = async (refundId, action) => {
+    let disputeReason = '';
+    if (action === 'DISPUTE') {
+      const reason = window.prompt('Nhập lý do chưa nhận được tiền hoặc khiếu nại:', 'Chủ sân báo đã chuyển nhưng tài khoản tôi chưa nhận được tiền');
+      if (reason === null) return;
+      disputeReason = reason.trim() || 'Chưa nhận được tiền vào tài khoản';
+    }
+
+    try {
+      const res = await confirmCustomerRefundReceived(refundId, { action, disputeReason });
+      if (res?.success) {
+        alert(action === 'CONFIRM' ? '✅ Đã xác nhận nhận tiền thành công!' : '⚠️ Đã mở khiếu nại tranh chấp. Admin sàn sẽ can thiệp kiểm tra.');
+        fetchUserBookings();
+      } else {
+        alert('Lỗi: ' + (res?.error || 'Không thể thực hiện'));
+      }
+    } catch (err) {
+      alert('Lỗi: ' + err.message);
+    }
+  };
 
   // Xử lý Cập nhật thông tin cá nhân
   const handleUpdateProfile = async (e) => {
@@ -467,7 +574,8 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                             <span className="text-[10px] text-slate-400 font-bold uppercase block">Tổng tiền</span>
                             <span className="font-black text-emerald-700">{Number(item.tongtien).toLocaleString('vi-VN')} đ</span>
                           </div>
-                          <div className="col-span-2 sm:col-span-1 flex items-center justify-start sm:justify-end">
+                          <div className="col-span-2 sm:col-span-1 flex items-center justify-start sm:justify-end gap-2 flex-wrap">
+                            {/* Nút Viết đánh giá cho đơn hoàn thành */}
                             {isCompleted && (
                               isEvaluated ? (
                                 <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1">
@@ -485,8 +593,58 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                                 </button>
                               )
                             )}
+
+                            {/* Nút Hủy Đặt Sân (FEATURE 02: Tự hủy trước >= 4h) */}
+                            {['CHO_THI_DAU', 'CHOXACNHAN', 'DA_THANH_TOAN'].includes(item.trangthai) && (
+                              <button
+                                onClick={() => handleOpenCancelModal(item)}
+                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs rounded-xl shadow-sm transition flex items-center gap-1"
+                              >
+                                <XCircle className="w-3.5 h-3.5" /> Hủy Đặt Sân
+                              </button>
+                            )}
                           </div>
                         </div>
+
+                        {/* Thông tin hoàn tiền cho đơn đã hủy */}
+                        {(item.trangthai === 'DA_HUY' || item.trangthai === 'DAHUY') && (() => {
+                          const refund = customerRefunds.find(r => r.madatsan === item.madatsan);
+                          if (!refund) return null;
+                          return (
+                            <div className="mt-3 pt-3 border-t border-slate-200/60 bg-amber-50/50 rounded-xl p-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                    <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Hoàn tiền: <strong className="text-emerald-700">{Number(refund.sotien_hoan).toLocaleString('vi-VN')} đ</strong> (Hoàn 100%)</span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 mt-0.5">
+                                    {refund.trangthai === 'CHO_HOAN' && '⏳ Chờ Chủ Sân chuyển khoản (Hạn chót 24h từ lúc hủy)'}
+                                    {refund.trangthai === 'DA_CHUYEN' && `✅ Chủ sân đã báo chuyển khoản ${refund.chusan_nganhang_txid ? `(Mã GD: ${refund.chusan_nganhang_txid})` : ''} - Bạn vui lòng xác nhận`}
+                                    {refund.trangthai === 'DA_NHAN' && '🎉 Bạn đã xác nhận nhận đủ 100% tiền hoàn'}
+                                    {refund.trangthai === 'TRANH_CHAP' && '⚠️ Đang mở khiếu nại tranh chấp - Admin sàn đang đối soát xử lý'}
+                                  </div>
+                                </div>
+                                {refund.trangthai === 'DA_CHUYEN' && (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleConfirmRefund(refund.id, 'CONFIRM')}
+                                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm"
+                                    >
+                                      Đã nhận tiền
+                                    </button>
+                                    <button
+                                      onClick={() => handleConfirmRefund(refund.id, 'DISPUTE')}
+                                      className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] rounded-lg"
+                                    >
+                                      Chưa nhận được
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -569,6 +727,179 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                 </button>
               </div>
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HỦY ĐẶT SÂN & HOÀN TIỀN (FEATURE 02) */}
+      {showCancelModal && selectedBookingForCancel && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button 
+              onClick={() => setShowCancelModal(false)}
+              className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-full transition"
+            >
+              ✕
+            </button>
+
+            <div className="text-center mb-5">
+              <div className="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="w-6 h-6 text-rose-600" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Hủy Đặt Sân & Chính Sách Hoàn Tiền</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {selectedBookingForCancel.san?.tensan} • Ngày {selectedBookingForCancel.ngaysudung}
+              </p>
+            </div>
+
+            {isCheckingCancel ? (
+              <div className="py-8 text-center text-xs font-bold text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                Đang kiểm tra thời hạn và điều kiện hủy...
+              </div>
+            ) : cancelCheckResult ? (
+              <div className="space-y-4">
+                {/* Kết quả kiểm tra */}
+                {cancelCheckResult.eligible ? (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 space-y-1">
+                    <div className="font-extrabold flex items-center gap-1.5 text-emerald-900">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Hợp lệ tự hủy (Còn {cancelCheckResult.hoursRemaining} giờ trước trận)</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700">
+                      {cancelCheckResult.reason}
+                    </p>
+                    {cancelCheckResult.isOnlinePaid ? (
+                      <>
+                        <p className="text-[11px] font-bold text-emerald-950 mt-1">
+                          💰 Số tiền hoàn trả 100%: <span className="text-sm font-black text-emerald-600">{Number(cancelCheckResult.refundAmount).toLocaleString('vi-VN')} đ</span>. Chủ sân sẽ chuyển khoản mô phỏng vào tài khoản của bạn.
+                        </p>
+                        <div className="text-[10px] text-amber-800 bg-amber-50/90 p-2 rounded-lg border border-amber-200 font-medium mt-1">
+                          ⚡ <strong>Chế độ Demo (Simulation):</strong> Tiền hoàn là số dư mô phỏng trong hệ thống thử nghiệm, không chuyển hay nhận tiền ngân hàng thật.
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-[11px] font-bold text-emerald-950 mt-1">
+                        ℹ️ Đơn thanh toán tiền mặt tại sân: Lịch sân sẽ được giải phóng ngay lập tức mà không phát sinh chi phí.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-1">
+                    <div className="font-extrabold flex items-center gap-1.5 text-rose-900">
+                      <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>Không thể tự hủy đơn đặt sân này</span>
+                    </div>
+                    <p className="text-[11px] text-rose-700">
+                      {cancelCheckResult.reason}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Chính sách quy định: Khách hàng chỉ được tự hủy trước giờ thi đấu tối thiểu 4 tiếng.
+                    </p>
+                  </div>
+                )}
+
+                {/* Form tài khoản nhận hoàn tiền nếu đã thanh toán Online */}
+                {cancelCheckResult.eligible && cancelCheckResult.isOnlinePaid && (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase">
+                      <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Tài khoản ngân hàng nhận tiền hoàn</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2.5 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Ngân hàng</label>
+                        <select
+                          value={refundBank.nganhang}
+                          onChange={(e) => setRefundBank({ ...refundBank, nganhang: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="MB Bank">MB Bank (Quân Đội)</option>
+                          <option value="Vietcombank">Vietcombank</option>
+                          <option value="Techcombank">Techcombank</option>
+                          <option value="ACB">ACB (Á Châu)</option>
+                          <option value="VPBank">VPBank</option>
+                          <option value="TPBank">TPBank</option>
+                          <option value="BIDV">BIDV</option>
+                          <option value="Vietinbank">Vietinbank</option>
+                          <option value="Agribank">Agribank</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Số tài khoản</label>
+                        <input
+                          type="text"
+                          placeholder="Ví dụ: 0901234567"
+                          value={refundBank.sotaikhoan}
+                          onChange={(e) => setRefundBank({ ...refundBank, sotaikhoan: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Tên chủ tài khoản (In hoa không dấu)</label>
+                        <input
+                          type="text"
+                          placeholder="NGUYEN VAN A"
+                          value={refundBank.tentaikhoan}
+                          onChange={(e) => setRefundBank({ ...refundBank, tentaikhoan: e.target.value.toUpperCase() })}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lý do hủy */}
+                {cancelCheckResult.eligible && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Lý do hủy đặt sân</label>
+                    <select
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="Bận việc đột xuất">Bận việc đột xuất</option>
+                      <option value="Thời tiết không thuận lợi">Thời tiết không thuận lợi</option>
+                      <option value="Thiếu người tham gia">Thiếu người tham gia</option>
+                      <option value="Đặt nhầm khung giờ hoặc sân">Đặt nhầm khung giờ hoặc sân</option>
+                      <option value="Khác">Lý do khác</option>
+                    </select>
+                  </div>
+                )}
+
+                {cancelError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold">
+                    ⚠️ {cancelError}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowCancelModal(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
+                  >
+                    Đóng
+                  </button>
+                  {cancelCheckResult.eligible && (
+                    <button 
+                      type="button"
+                      disabled={isCancelling}
+                      onClick={handleExecuteCancel}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1"
+                    >
+                      {isCancelling ? 'Đang hủy...' : 'Xác Nhận Hủy Sân'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : null}
 
           </div>
         </div>

@@ -6,7 +6,7 @@ import {
   Tv, Heart, ExternalLink, Shield, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, User, Users,
   Search, Bell, LogIn, LogOut, Building2, PlusCircle, LayoutDashboard, X, QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg } from '../supabaseClient';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -1103,19 +1103,20 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
             {paymentMethod === 'QR' ? (
               <div className="space-y-4">
                 <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 text-center">
-                  <div className="text-xs font-bold text-slate-700 mb-2">Quét mã VietQR để thanh toán 100%</div>
+                  <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Thanh Toán Mô Phỏng (Demo 100%)</div>
                   <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
                     <img 
-                      src={`https://img.vietqr.io/image/970422-0901111111-compact2.png?amount=${totalPrice}&addInfo=DATSAN%20${sanInfo?.MaSan}&accountName=DATSAN%20ONLINE`} 
-                      alt="VietQR MBBank" 
+                      src={getMockBookingQrSvg(totalPrice, `SAN-${sanInfo?.MaSan || sanInfo?.masan || 'DEMO'}`)} 
+                      alt="Demo Mock QR" 
                       className="w-48 h-48 mx-auto object-contain"
                     />
                   </div>
                   <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
-                    <div>Ngân hàng: <strong className="text-slate-800">MBBank</strong> | STK: <strong className="text-slate-800">0901111111</strong></div>
-                    <div>Chủ tài khoản: <strong className="text-slate-800">DATSAN ONLINE (ADMIN)</strong></div>
+                    <div>Ngân hàng: <strong className="text-slate-800">NGÂN HÀNG MÔ PHỎNG DATSAN</strong></div>
+                    <div>Số tài khoản: <strong className="text-slate-800 font-mono">DEMO-88888888</strong></div>
+                    <div>Chủ tài khoản: <strong className="text-slate-800">DATSAN ONLINE DEMO (KHÔNG CHUYỂN TIỀN THẬT)</strong></div>
                     <div className="text-emerald-700 font-semibold mt-1">
-                      ⚡ Sàn giữ tiền an toàn & trích 10% hoa hồng ({Math.round(totalPrice * 0.1).toLocaleString('vi-VN')} đ)
+                      ⚡ Sàn mô phỏng giữ tiền & trích 10% hoa hồng ({Math.round(totalPrice * 0.1).toLocaleString('vi-VN')} đ)
                     </div>
                   </div>
                 </div>

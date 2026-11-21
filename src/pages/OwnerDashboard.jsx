@@ -3,9 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Building2, DollarSign, Calendar, Users, Star, CheckCircle2, 
   Clock, MapPin, Phone, AlertCircle, PlusCircle, RefreshCw, ChevronRight, Eye,
-  QrCode, X, Check, XCircle, Search, RotateCcw, Filter, Loader2
+  QrCode, X, Check, XCircle, Search, RotateCcw, Filter, Loader2,
+  ShieldCheck, CreditCard, ArrowRight, Shield, AlertTriangle
 } from 'lucide-react';
-import { supabase, settleOwnerBooking, triggerAutoComplete, broadcastAuthChange, fetchOwnerOverview } from '../supabaseClient';
+import { 
+  supabase, 
+  settleOwnerBooking, 
+  triggerAutoComplete, 
+  broadcastAuthChange, 
+  fetchOwnerOverview,
+  fetchOwnerDeposit,
+  requestOwnerDeposit,
+  submitOwnerDepositProof,
+  requestOwnerDepositRefund,
+  fetchOwnerRefunds,
+  confirmOwnerRefundSent,
+  processMockPayment,
+  getMockBookingQrSvg
+} from '../supabaseClient';
 import Header from '../components/Header';
 import LoginModal from '../components/LoginModal';
 import NotFound from './NotFound';
@@ -97,6 +112,22 @@ export default function OwnerDashboard({ user, setUser }) {
   const [isSettling, setIsSettling] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  // States Ký quỹ bảo đảm (FEATURE 01)
+  const [depositData, setDepositData] = useState(null);
+  const [loadingDeposit, setLoadingDeposit] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [depositPaymentReq, setDepositPaymentReq] = useState(null);
+  const [depositTxRef, setDepositTxRef] = useState('');
+  const [isSubmittingDepositProof, setIsSubmittingDepositProof] = useState(false);
+
+  // States Hoàn tiền cho khách hủy (FEATURE 02)
+  const [refundsList, setRefundsList] = useState([]);
+  const [loadingRefunds, setLoadingRefunds] = useState(false);
+  const [selectedRefundForAction, setSelectedRefundForAction] = useState(null);
+  const [refundTxIdInput, setRefundTxIdInput] = useState('');
+  const [refundProofUrlInput, setRefundProofUrlInput] = useState('');
+  const [isSubmittingRefundSent, setIsSubmittingRefundSent] = useState(false);
+
   // Helper parse metadata ghichu
   const parseMeta = (ghichu) => {
     try {
@@ -104,6 +135,14 @@ export default function OwnerDashboard({ user, setUser }) {
     } catch {
       return {};
     }
+  };
+
+  // Helper định dạng tiền tệ an toàn (chống hiển thị NaN đ hoặc giấu lỗi bằng 0đ)
+  const formatMoneySafe = (val) => {
+    if (val === null || val === undefined || val === '' || isNaN(Number(val))) {
+      return 'Chưa xác định';
+    }
+    return `${Number(val).toLocaleString('vi-VN')} đ`;
   };
 
   // Helper phân loại ca thi đấu
@@ -140,13 +179,159 @@ export default function OwnerDashboard({ user, setUser }) {
     }
   };
 
+  // Fetch thông tin ký quỹ của Chủ Sân (FEATURE 01)
+  const fetchOwnerDepositData = async () => {
+    if (!currentUser || !isOwnerOrAdmin) return;
+    try {
+      setLoadingDeposit(true);
+      const res = await fetchOwnerDeposit();
+      if (res?.deposit) setDepositData(res.deposit);
+    } catch (err) {
+      console.warn('Lỗi lấy thông tin ký quỹ:', err);
+    } finally {
+      setLoadingDeposit(false);
+    }
+  };
+
+  // Fetch danh sách hoàn tiền khách hủy (FEATURE 02)
+  const fetchOwnerRefundsData = async () => {
+    if (!currentUser || !isOwnerOrAdmin) return;
+    try {
+      setLoadingRefunds(true);
+      const res = await fetchOwnerRefunds();
+      if (res?.refunds) setRefundsList(res.refunds);
+    } catch (err) {
+      console.warn('Lỗi lấy danh sách hoàn tiền:', err);
+    } finally {
+      setLoadingRefunds(false);
+    }
+  };
+
   useEffect(() => {
     if (currentUser && isOwnerOrAdmin) {
       fetchOwnerData();
+      fetchOwnerDepositData();
+      fetchOwnerRefundsData();
     } else {
       setLoading(false);
     }
   }, [currentUser, isOwnerOrAdmin]);
+
+  // Bắt đầu quy trình nộp ký quỹ VietQR
+  const handleStartDepositPayment = async () => {
+    try {
+      const res = await requestOwnerDeposit();
+      if (res?.paymentDetails) {
+        setDepositPaymentReq(res.paymentDetails);
+        setDepositTxRef('');
+        setShowDepositModal(true);
+      }
+    } catch (err) {
+      alert('Lỗi tạo yêu cầu thanh toán ký quỹ: ' + err.message);
+    }
+  };
+
+  // Gửi xác nhận đã chuyển khoản ký quỹ
+  const handleSubmitDepositProof = async () => {
+    if (!depositPaymentReq?.requestId) return;
+    try {
+      setIsSubmittingDepositProof(true);
+      const res = await submitOwnerDepositProof({
+        requestId: depositPaymentReq.requestId,
+        bankTxId: depositTxRef || 'VQ-' + Date.now().toString().slice(-6),
+        proofUrl: ''
+      });
+      if (res?.success) {
+        alert('✅ Đã gửi thông tin nộp ký quỹ! Admin sàn sẽ đối soát tài khoản và kích hoạt trong vòng 1-2 giờ.');
+        setShowDepositModal(false);
+        fetchOwnerDepositData();
+      } else {
+        alert('Lỗi: ' + (res?.error || 'Không thể gửi xác nhận'));
+      }
+    } catch (err) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setIsSubmittingDepositProof(false);
+    }
+  };
+
+  // Thanh toán mô phỏng ký quỹ qua Mock Payment Gateway (DEMO)
+  const handleSimulateDepositPayment = async (simulationAction = 'SIMULATE_SUCCESS') => {
+    if (!depositPaymentReq) return;
+    const txId = depositPaymentReq.transaction?.magiaodich || depositPaymentReq.transaction?.id;
+    if (!txId) {
+      alert('Không tìm thấy mã giao dịch ký quỹ.');
+      return;
+    }
+    try {
+      setIsSubmittingDepositProof(true);
+      const res = await processMockPayment({
+        transactionType: 'ESCROW_DEPOSIT',
+        transactionId: txId,
+        simulationAction
+      });
+      if (res?.success) {
+        alert('🎉 ' + res.message);
+        setShowDepositModal(false);
+        fetchOwnerDepositData();
+      } else {
+        alert('⚠️ ' + (res?.message || 'Mô phỏng thanh toán thất bại'));
+        fetchOwnerDepositData();
+      }
+    } catch (err) {
+      alert('Lỗi thanh toán mô phỏng: ' + err.message);
+    } finally {
+      setIsSubmittingDepositProof(false);
+    }
+  };
+
+  // Hoàn tiền mô phỏng qua Mock Payment Gateway (DEMO)
+  const handleSimulateRefundPayment = async (refundId) => {
+    try {
+      setIsSubmittingRefundSent(true);
+      const res = await processMockPayment({
+        transactionType: 'REFUND',
+        transactionId: refundId,
+        simulationAction: 'SIMULATE_SUCCESS'
+      });
+      if (res?.success) {
+        alert('🎉 ' + res.message);
+        setSelectedRefundForAction(null);
+        fetchOwnerRefundsData();
+      } else {
+        alert('Lỗi: ' + (res?.message || 'Mô phỏng hoàn tiền thất bại'));
+      }
+    } catch (err) {
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setIsSubmittingRefundSent(false);
+    }
+  };
+
+  // Xác nhận đã chuyển khoản hoàn tiền cho khách hủy (FEATURE 02)
+  const handleConfirmRefundSent = async () => {
+    if (!selectedRefundForAction) return;
+    try {
+      setIsSubmittingRefundSent(true);
+      const res = await confirmOwnerRefundSent(selectedRefundForAction.id, {
+        bankTxId: refundTxIdInput || 'REF-' + Date.now().toString().slice(-6),
+        proofUrl: refundProofUrlInput
+      });
+      if (res?.success) {
+        alert('✅ Đã xác nhận chuyển tiền hoàn! Hệ thống đã thông báo khách hàng xác nhận nhận tiền.');
+        setSelectedRefundForAction(null);
+        setRefundTxIdInput('');
+        setRefundProofUrlInput('');
+        fetchOwnerRefundsData();
+      } else {
+        alert('Lỗi: ' + (res?.error || 'Thao tác thất bại'));
+      }
+    } catch (err) {
+      alert('Lỗi xác nhận hoàn tiền: ' + err.message);
+    } finally {
+      setIsSubmittingRefundSent(false);
+    }
+  };
 
   // Cập nhật trạng thái đơn đặt sân thông thường
   const handleUpdateBookingStatus = async (maDatSan, newStatus) => {
@@ -268,7 +453,7 @@ export default function OwnerDashboard({ user, setUser }) {
       <main className="max-w-[1440px] mx-auto px-6 pt-8">
         
         {/* HEADER DASHBOARD */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 mb-1">
               <Building2 className="w-4 h-4" />
@@ -293,6 +478,20 @@ export default function OwnerDashboard({ user, setUser }) {
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* DEMO FINANCIAL MODE BANNER */}
+        <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 p-4 rounded-r-2xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="p-2 bg-amber-500 text-white rounded-xl shadow-sm text-xs font-black">DEMO</span>
+            <div>
+              <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">Hệ Thống Mô Phỏng Tài Chính (Demo Financial Mode)</h4>
+              <p className="text-[11px] text-amber-800 font-medium">Toàn bộ ký quỹ, hoàn tiền và hoa hồng trên sàn là giả lập phục vụ thử nghiệm. Tuyệt đối không sử dụng tiền thật.</p>
+            </div>
+          </div>
+          <span className="hidden sm:inline-flex px-2.5 py-1 bg-amber-100 text-amber-900 text-[10px] font-bold rounded-full">
+            FINANCIAL_MODE=DEMO
+          </span>
         </div>
 
         {/* THỐNG KÊ KPI CARDS */}
@@ -344,6 +543,46 @@ export default function OwnerDashboard({ user, setUser }) {
             <p className="text-[11px] text-purple-600 font-bold mt-1">Đánh giá từ khách hàng</p>
           </div>
 
+        </div>
+
+        {/* FEATURE 01: BANNER KHOẢN BẢO ĐẢM KÝ QUỸ (1.000.000 VND) */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-start gap-3.5">
+            <div className={`p-3 rounded-xl shadow-md shrink-0 ${
+              depositData?.trangthai === 'HOP_LE' ? 'bg-emerald-600 text-white' :
+              depositData?.trangthai === 'CHO_XAC_MINH' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
+            }`}>
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-black text-slate-900 text-base flex items-center gap-2">
+                Khoản Bảo Đảm Trách Nhiệm Chủ Sân (Ký Quỹ)
+                <span className={`px-2.5 py-0.5 text-white text-[10px] font-black rounded-full uppercase tracking-wider ${
+                  depositData?.trangthai === 'HOP_LE' ? 'bg-emerald-600' :
+                  depositData?.trangthai === 'CHO_XAC_MINH' ? 'bg-amber-600' : 'bg-rose-600'
+                }`}>
+                  {depositData?.trangthai === 'HOP_LE' ? (depositData.is_legacy ? 'ĐÃ KÝ QUỸ (CHỦ SÂN HIỆN HỮU)' : 'ĐÃ KÝ QUỸ 1.000.000đ') :
+                   depositData?.trangthai === 'CHO_XAC_MINH' ? 'CHỜ ADMIN XÁC MINH' : 'CHƯA NỘP BẢO ĐẢM'}
+                </span>
+              </h4>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                {depositData?.trangthai === 'HOP_LE'
+                  ? `Số dư quỹ bảo đảm hiện tại: ${Number(depositData.sodu_hientai || 1000000).toLocaleString('vi-VN')} đ. Khoản bảo đảm có hoàn lại khi ngừng kinh doanh.`
+                  : depositData?.trangthai === 'CHO_XAC_MINH'
+                  ? 'Bạn đã gửi thông tin chuyển khoản VietQR. Admin đang đối soát giao dịch ngân hàng để kích hoạt.'
+                  : 'Quy định sàn: Chủ sân cần nộp khoản bảo đảm 1.000.000đ có hoàn lại để sân mới được nhận đặt lịch và phê duyệt hoạt động.'
+                }
+              </p>
+            </div>
+          </div>
+          {depositData?.trangthai !== 'HOP_LE' && depositData?.trangthai !== 'CHO_XAC_MINH' && (
+            <button
+              onClick={handleStartDepositPayment}
+              className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
+            >
+              <QrCode className="w-4 h-4" /> Nộp bảo đảm 1.000.000đ qua VietQR
+            </button>
+          )}
         </div>
 
         {/* SỔ NỢ HOA HỒNG BANNER CẦN NỘP ADMIN */}
@@ -398,6 +637,14 @@ export default function OwnerDashboard({ user, setUser }) {
               }`}
             >
               Danh Sách Sân Của Tôi ({sanList.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('REFUNDS')}
+              className={`pb-4 text-xs font-extrabold transition relative ${
+                activeTab === 'REFUNDS' ? 'text-emerald-700 border-b-2 border-emerald-600' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Hoàn Tiền Khách Hủy ({refundsList.length})
             </button>
           </div>
 
@@ -759,6 +1006,152 @@ export default function OwnerDashboard({ user, setUser }) {
               </div>
             )}
 
+            {/* TAB 3: DANH SÁCH HOÀN TIỀN KHÁCH HỦY (FEATURE 02) */}
+            {activeTab === 'REFUNDS' && (
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900">Yêu Cầu Hoàn Tiền Do Khách Hủy Trước Giờ Đấu</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Khách hàng tự hủy hợp lệ (&ge; 4 tiếng trước giờ đấu) được hoàn 100%. Chủ sân có trách nhiệm chuyển khoản hoàn tiền trong vòng 24 giờ.
+                    </p>
+                  </div>
+                  <button
+                    onClick={fetchOwnerRefundsData}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingRefunds ? 'animate-spin' : ''}`} />
+                    Làm mới
+                  </button>
+                </div>
+
+                {loadingRefunds ? (
+                  <div className="py-16 text-center text-xs font-bold text-slate-500">
+                    Đang tải danh sách hoàn tiền...
+                  </div>
+                ) : refundsList.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400">
+                    <CheckCircle2 className="w-12 h-12 mx-auto mb-3 opacity-30 text-emerald-500" />
+                    <p className="text-xs font-bold">Hiện không có yêu cầu hoàn tiền nào cần xử lý.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="py-3 px-4">Mã Đơn / Ngày Tạo</th>
+                          <th className="py-3 px-4">Số Tiền Hoàn (100%)</th>
+                          <th className="py-3 px-4">Tài Khoản Nhận</th>
+                          <th className="py-3 px-4">Hạn Xử Lý (24h)</th>
+                          <th className="py-3 px-4">Trạng Thái</th>
+                          <th className="py-3 px-4 text-right">Thao Tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {refundsList.map((rf) => {
+                          const refundId = rf.mahoantien || rf.id;
+                          const refundAmount = rf.sotien_canhoan ?? rf.sotien_hoan;
+                          const receiverHolder = rf.chutaikhoan_nhan || rf.tentaikhoan_nhan || '—';
+                          const isOverdue = (rf.trangthai === 'CHO_HOAN' || rf.trangthai === 'QUA_HAN') && new Date(rf.han_xuly) < new Date();
+                          return (
+                            <tr key={refundId || rf.madatsan} className="hover:bg-slate-50/70 transition">
+                              <td className="py-3 px-4">
+                                <div className="font-extrabold text-slate-900">Đơn #{rf.madatsan}</div>
+                                <div className="text-[10px] text-slate-400">Yêu cầu: #{refundId || '—'}</div>
+                              </td>
+                              <td className="py-3 px-4 font-black text-rose-600">
+                                {formatMoneySafe(refundAmount)}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="font-bold text-slate-800">{rf.nganhang_nhan || 'MB Bank'} - {rf.sotaikhoan_nhan || '—'}</div>
+                                <div className="text-[10px] text-slate-500">{receiverHolder}</div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className={`text-[11px] font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-700'}`}>
+                                  {new Date(rf.han_xuly).toLocaleString('vi-VN')}
+                                </div>
+                                {isOverdue && (
+                                  <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
+                                    Quá hạn 24h
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {rf.trangthai === 'CHO_HOAN' && (
+                                  <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-600" /> Chờ chuyển hoàn
+                                  </span>
+                                )}
+                                {rf.trangthai === 'QUA_HAN' && (
+                                  <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-rose-600" /> Quá hạn - Cần giải trình
+                                  </span>
+                                )}
+                                {rf.trangthai === 'DANG_XAC_MINH_GIAI_TRINH' && (
+                                  <span className="px-2.5 py-1 bg-purple-100 text-purple-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-purple-600" /> Admin thẩm định giải trình
+                                  </span>
+                                )}
+                                {(rf.trangthai === 'DA_CHUYEN' || rf.trangthai === 'OWNER_BAO_DA_CHUYEN') && (
+                                  <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-blue-600" /> Đã chuyển (Chờ khách)
+                                  </span>
+                                )}
+                                {(rf.trangthai === 'DA_NHAN' || rf.trangthai === 'DA_HOAN') && (
+                                  <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Khách đã nhận
+                                  </span>
+                                )}
+                                {rf.trangthai === 'TRANH_CHAP' && (
+                                  <span className="px-2.5 py-1 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-rose-600" /> Tranh chấp
+                                  </span>
+                                )}
+                                {rf.trangthai === 'BOI_HOAN_HOAN_TAT' && (
+                                  <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Sàn đã bồi hoàn khách
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                {rf.trangthai === 'CHO_HOAN' && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedRefundForAction(rf);
+                                      setRefundTxIdInput('');
+                                      setRefundProofUrlInput('');
+                                    }}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
+                                  >
+                                    Báo đã chuyển khoản
+                                  </button>
+                                )}
+                                {rf.trangthai === 'DA_CHUYEN' && (
+                                  <span className="text-[11px] text-slate-400">
+                                    Mã GD: {rf.magiaodich_owner || rf.chusan_nganhang_txid || 'Đã gửi'}
+                                  </span>
+                                )}
+                                {rf.trangthai === 'DA_NHAN' && (
+                                  <span className="text-[11px] text-emerald-600 font-bold">
+                                    ✓ Hoàn tất
+                                  </span>
+                                )}
+                                {rf.trangthai === 'TRANH_CHAP' && (
+                                  <span className="text-[11px] text-rose-600 font-bold">
+                                    Admin đang xử lý
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
 
         </div>
@@ -785,19 +1178,19 @@ export default function OwnerDashboard({ user, setUser }) {
               </div>
 
               <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 text-center mb-5">
-                <div className="text-xs font-bold text-slate-700 mb-2">Quét mã VietQR MBBank để nộp hoa hồng</div>
+                <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Nộp Hoa Hồng Mô Phỏng (DEMO 10%)</div>
                 <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
                   <img 
-                    src={`https://img.vietqr.io/image/970422-0901111111-compact2.png?amount=${totalPendingCommission}&addInfo=HOAHONG%20${ownerId}&accountName=DATSAN%20ONLINE`} 
-                    alt="VietQR MBBank Admin" 
+                    src={getMockBookingQrSvg(totalPendingCommission, `HOAHONG-${ownerId}`)} 
+                    alt="Demo Mock QR Commission" 
                     className="w-48 h-48 mx-auto object-contain"
                   />
                 </div>
                 <div className="mt-3 text-[11px] text-slate-600 space-y-0.5">
-                  <div>Ngân hàng: <strong className="text-slate-800">MBBank</strong> | STK: <strong className="text-slate-800">0901111111</strong></div>
-                  <div>Người nhận: <strong className="text-slate-800">LÊ HOÀNG QUẢN TRỊ (ADMIN)</strong></div>
+                  <div>Ngân hàng: <strong className="text-slate-800">NGÂN HÀNG MÔ PHỎNG DATSAN</strong> | STK: <strong className="text-slate-800 font-mono">DEMO-88888888</strong></div>
+                  <div>Người nhận: <strong className="text-slate-800">DATSAN ONLINE QUẢN TRỊ (DEMO)</strong></div>
                   <div className="text-base font-black text-rose-600 mt-2">
-                    Tổng tiền nộp: {totalPendingCommission.toLocaleString('vi-VN')} đ
+                    Tổng tiền nộp mô phỏng: {totalPendingCommission.toLocaleString('vi-VN')} đ
                   </div>
                 </div>
               </div>
@@ -818,6 +1211,194 @@ export default function OwnerDashboard({ user, setUser }) {
                   <CheckCircle2 className="w-4 h-4" />
                   {isSettling ? 'Đang xử lý...' : 'Xác nhận đã chuyển khoản'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FEATURE 01: MODAL NỘP KHOẢN BẢO ĐẢM KÝ QUỸ VIETQR (1.000.000 VND) */}
+        {showDepositModal && depositPaymentReq && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
+              <button 
+                onClick={() => setShowDepositModal(false)}
+                className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center mb-3">
+                <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                  Bảo Đảm Trách Nhiệm Sân Bãi (Demo)
+                </span>
+                <h3 className="text-lg font-black text-slate-900 mt-2">Nộp Ký Quỹ Mô Phỏng 1.000.000đ</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Thu một lần cho mỗi tài khoản Owner. Khoản bảo đảm mô phỏng phục vụ thử nghiệm nền tảng.
+                </p>
+              </div>
+
+              {/* DEMO BADGE */}
+              <div className="mb-3 p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-center">
+                <div className="text-xs font-black text-amber-900">⚡ GIAO DỊCH MÔ PHỎNG (FINANCIAL_MODE=DEMO)</div>
+                <div className="text-[10px] text-amber-700 font-medium">Toàn bộ tiền tệ là giả lập. Tuyệt đối không quét bằng ứng dụng ngân hàng thật.</div>
+              </div>
+
+              <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 text-center mb-4">
+                <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Thanh Toán Giả Lập (Mock Gateway QR)</div>
+                <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
+                  <img 
+                    src={depositPaymentReq.bankInfo?.qrUrl || depositPaymentReq.qrUrl || getMockBookingQrSvg(1000000, depositPaymentReq.transferContent || 'KYQUY')} 
+                    alt="Mock QR Demo" 
+                    className="w-48 h-48 mx-auto object-contain"
+                  />
+                </div>
+                <div className="mt-3 text-[11px] text-slate-600 space-y-1 text-left bg-white p-3 rounded-xl border border-slate-200">
+                  <div>Ngân hàng: <strong className="text-slate-800">{depositPaymentReq.bankInfo?.bankName || 'NGÂN HÀNG MÔ PHỎNG DATSAN'}</strong></div>
+                  <div>Số tài khoản: <strong className="text-slate-800 font-mono">{depositPaymentReq.bankInfo?.accountNumber || 'DEMO-88888888'}</strong></div>
+                  <div>Tên người nhận: <strong className="text-slate-800">{depositPaymentReq.bankInfo?.accountHolder || 'DATSANONLINE MÔ PHỎNG'}</strong></div>
+                  <div>Số tiền: <strong className="text-rose-600 font-black">1.000.000 đ (Mô phỏng)</strong></div>
+                  <div className="pt-1 border-t border-slate-100">
+                    Nội dung: <strong className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded">{depositPaymentReq.transferContent || depositPaymentReq.content}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* MOCK PAYMENT GATEWAY BUTTONS */}
+              <div className="space-y-2 mb-4">
+                <div className="text-[11px] font-bold text-slate-700">Bộ Điều Khiển Mock Payment Gateway:</div>
+                <button
+                  disabled={isSubmittingDepositProof}
+                  onClick={() => handleSimulateDepositPayment('SIMULATE_SUCCESS')}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isSubmittingDepositProof ? 'Đang xử lý...' : '⚡ Thanh Toán Mô Phỏng (Demo Success - Duyệt Ngay)'}
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    disabled={isSubmittingDepositProof}
+                    onClick={() => handleSimulateDepositPayment('SIMULATE_FAILURE')}
+                    className="flex-1 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] transition cursor-pointer"
+                  >
+                    Thử Nghiệm Thất Bại
+                  </button>
+                  <button
+                    disabled={isSubmittingDepositProof}
+                    onClick={() => handleSimulateDepositPayment('SIMULATE_PENDING')}
+                    className="flex-1 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px] transition cursor-pointer"
+                  >
+                    Thử Nghiệm Chờ Duyệt
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDepositModal(false)}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
+                >
+                  Đóng Cửa Sổ
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FEATURE 02: MODAL BÁO ĐÃ HOÀN TIỀN CHO KHÁCH HỦY */}
+        {selectedRefundForAction && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
+              <button 
+                onClick={() => setSelectedRefundForAction(null)}
+                className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center mb-4">
+                <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                  Chuyển Tiền Hoàn Trả Khách
+                </span>
+                <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận Đã Chuyển Khoản Hoàn Tiền</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Đơn đặt sân #{selectedRefundForAction.madatsan} • Hoàn 100%
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4 text-xs space-y-1.5">
+                <div className="font-extrabold text-slate-800 uppercase text-[11px] mb-2 flex items-center gap-1">
+                  <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Thông tin tài khoản thụ hưởng của Khách
+                </div>
+                <div>Ngân hàng: <strong className="text-slate-900">{selectedRefundForAction.nganhang_nhan || 'MB Bank'}</strong></div>
+                <div>Số tài khoản: <strong className="text-slate-900 font-mono text-sm">{selectedRefundForAction.sotaikhoan_nhan || '—'}</strong></div>
+                <div>Chủ tài khoản: <strong className="text-slate-900 uppercase">{selectedRefundForAction.chutaikhoan_nhan || selectedRefundForAction.tentaikhoan_nhan || '—'}</strong></div>
+                <div className="pt-2 border-t border-slate-200 text-sm">
+                  Số tiền cần hoàn: <strong className="text-rose-600 font-black">
+                    {formatMoneySafe(selectedRefundForAction.sotien_canhoan ?? selectedRefundForAction.sotien_hoan)}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã giao dịch chuyển khoản (FT/Transaction ID)</label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: FT26118899 hoặc MB-..."
+                    value={refundTxIdInput}
+                    onChange={(e) => setRefundTxIdInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Link ảnh biên lai chuyển tiền (tùy chọn)</label>
+                  <input
+                    type="text"
+                    placeholder="https://... hoặc để trống nếu đã nhập mã giao dịch"
+                    value={refundProofUrlInput}
+                    onChange={(e) => setRefundProofUrlInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-900 flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold">Mô phỏng hoàn tiền (Demo Financial Mode)</div>
+                  <div className="text-[11px] text-amber-700 mt-0.5">
+                    Hệ thống đang chạy chế độ Demo. Bạn có thể nhấn <strong>Hoàn tiền mô phỏng</strong> để hệ thống tự động sinh mã giao dịch và ghi nhận hoàn tất ngay lập tức mà không cần chuyển khoản ngân hàng thật.
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  disabled={isSubmittingRefundSent}
+                  onClick={() => handleSimulateRefundPayment(selectedRefundForAction.mahoantien || selectedRefundForAction.id)}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  {isSubmittingRefundSent ? 'Đang xử lý mô phỏng...' : '⚡ Chuyển tiền hoàn mô phỏng (Demo Refund)'}
+                </button>
+
+                <div className="flex gap-3 mt-1">
+                  <button
+                    onClick={() => setSelectedRefundForAction(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    disabled={isSubmittingRefundSent}
+                    onClick={handleConfirmRefundSent}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isSubmittingRefundSent ? 'Đang gửi...' : 'Nhập mã thủ công'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

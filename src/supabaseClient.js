@@ -156,6 +156,133 @@ export async function updateAdminUserRole(userId, role) {
   });
 }
 
+// FEATURE 01: OWNER SECURITY DEPOSIT HELPERS
+export async function fetchOwnerDeposit() {
+  return apiRequest('/api/owner/deposit');
+}
+
+export async function requestOwnerDeposit() {
+  return apiRequest('/api/owner/deposit/request', { method: 'POST' });
+}
+
+export async function submitOwnerDepositProof(data) {
+  return apiRequest('/api/owner/deposit/submit-proof', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchAdminDeposits() {
+  return apiRequest('/api/admin/deposits');
+}
+
+export async function verifyAdminDeposit(data) {
+  return apiRequest('/api/admin/deposits/verify', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function requestOwnerDepositRefund(data) {
+  return apiRequest('/api/owner/deposit/refund-request', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function settleAdminDepositRefund(data) {
+  return apiRequest('/api/admin/deposits/settle-refund', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// FEATURE 02: CUSTOMER CANCELLATION & REFUND HELPERS
+export async function checkCustomerCancellation(bookingId) {
+  return apiRequest(`/api/customer/cancellation-check/${bookingId}`);
+}
+
+export async function cancelCustomerBooking(data) {
+  return apiRequest('/api/customer/cancel-booking', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchOwnerRefunds() {
+  return apiRequest('/api/owner/refunds');
+}
+
+export async function confirmOwnerRefundSent(refundId, data) {
+  return apiRequest(`/api/owner/refunds/${refundId}/confirm-sent`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function confirmCustomerRefundReceived(refundId, data) {
+  return apiRequest(`/api/customer/refunds/${refundId}/confirm-received`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchCustomerRefunds() {
+  return apiRequest('/api/customer/refunds');
+}
+
+export async function fetchAdminRefunds() {
+  return apiRequest('/api/admin/refunds');
+}
+
+export async function resolveAdminRefundDispute(refundId, data) {
+  return apiRequest(`/api/admin/refunds/${refundId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function submitOwnerRefundExplanation(refundId, data) {
+  return apiRequest(`/api/owner/refunds/${refundId}/explain`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function submitOwnerRefundAppeal(refundId, data) {
+  return apiRequest(`/api/owner/refunds/${refundId}/appeal`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function adjudicateAdminRefund(refundId, data) {
+  return apiRequest(`/api/admin/refunds/${refundId}/adjudicate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function disburseCustomerRefund(refundId, data) {
+  return apiRequest(`/api/admin/refunds/${refundId}/disburse-customer`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function topUpOwnerDeposit(data) {
+  return apiRequest('/api/owner/deposit/top-up', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function checkAdminOverdueRefunds() {
+  return apiRequest('/api/admin/refunds/check-overdue', {
+    method: 'POST',
+  });
+}
+
 class ApiQuery {
   constructor(table) {
     this.payload = { table, action: 'select', columns: '*', filters: [] };
@@ -273,4 +400,39 @@ export async function registerField(fieldData) {
     method: 'POST',
     body: JSON.stringify(fieldData),
   });
+}
+
+export async function processMockPayment(payload) {
+  return apiRequest('/api/mock-payment/process', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getMockPaymentConfig() {
+  return apiRequest('/api/mock-payment/config');
+}
+
+export function getMockBookingQrSvg(amount = 0, info = 'DATSAN') {
+  const formattedAmount = (Number(amount || 0)).toLocaleString('vi-VN');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+    <rect width="300" height="300" fill="#f8fafc" rx="16"/>
+    <rect x="15" y="15" width="270" height="270" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="12"/>
+    <rect x="35" y="35" width="55" height="55" fill="#0f172a" rx="6"/>
+    <rect x="45" y="45" width="35" height="35" fill="#ffffff" rx="3"/>
+    <rect x="52" y="52" width="21" height="21" fill="#0f172a"/>
+    <rect x="210" y="35" width="55" height="55" fill="#0f172a" rx="6"/>
+    <rect x="220" y="45" width="35" height="35" fill="#ffffff" rx="3"/>
+    <rect x="227" y="52" width="21" height="21" fill="#0f172a"/>
+    <rect x="35" y="210" width="55" height="55" fill="#0f172a" rx="6"/>
+    <rect x="45" y="220" width="35" height="35" fill="#ffffff" rx="3"/>
+    <rect x="52" y="227" width="21" height="21" fill="#0f172a"/>
+    <rect x="25" y="105" width="250" height="90" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5" rx="10"/>
+    <text x="150" y="132" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="#b91c1c" text-anchor="middle">⚡ MÔ PHỎNG THANH TOÁN ⚡</text>
+    <text x="150" y="153" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#7f1d1d" text-anchor="middle">KHÔNG QUÉT BẰNG APP NGÂN HÀNG THẬT</text>
+    <text x="150" y="174" font-family="system-ui, sans-serif" font-size="10" fill="#991b1b" text-anchor="middle">DEMO ONLY - ${info}</text>
+    <text x="150" y="245" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#0284c7" text-anchor="middle">DATSAN ONLINE SIMULATION</text>
+    <text x="150" y="265" font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">${formattedAmount} đ</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
