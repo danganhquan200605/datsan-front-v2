@@ -217,7 +217,7 @@ export default function OwnerDashboard({ user, setUser }) {
     }
   }, [currentUser, isOwnerOrAdmin]);
 
-  // Bắt đầu quy trình nộp ký quỹ VietQR
+  // Bắt đầu quy trình nộp ký quỹ mô phỏng DEMO
   const handleStartDepositPayment = async () => {
     try {
       const res = await requestOwnerDeposit();
@@ -569,7 +569,7 @@ export default function OwnerDashboard({ user, setUser }) {
                 {depositData?.trangthai === 'HOP_LE'
                   ? `Số dư quỹ bảo đảm hiện tại: ${Number(depositData.sodu_hientai || 1000000).toLocaleString('vi-VN')} đ. Khoản bảo đảm có hoàn lại khi ngừng kinh doanh.`
                   : depositData?.trangthai === 'CHO_XAC_MINH'
-                  ? 'Bạn đã gửi thông tin chuyển khoản VietQR. Admin đang đối soát giao dịch ngân hàng để kích hoạt.'
+                  ? 'Bạn đã gửi thông tin ký quỹ mô phỏng DEMO. Admin đang đối soát giao dịch để kích hoạt.'
                   : 'Quy định sàn: Chủ sân cần nộp khoản bảo đảm 1.000.000đ có hoàn lại để sân mới được nhận đặt lịch và phê duyệt hoạt động.'
                 }
               </p>
@@ -580,7 +580,7 @@ export default function OwnerDashboard({ user, setUser }) {
               onClick={handleStartDepositPayment}
               className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
             >
-              <QrCode className="w-4 h-4" /> Nộp bảo đảm 1.000.000đ qua VietQR
+              <QrCode className="w-4 h-4" /> Nộp bảo đảm 1.000.000đ (Mô phỏng DEMO)
             </button>
           )}
         </div>
@@ -612,7 +612,7 @@ export default function OwnerDashboard({ user, setUser }) {
               style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
               className="px-5 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
             >
-              <QrCode className="w-4 h-4" /> Nộp hoa hồng qua VietQR
+              <QrCode className="w-4 h-4" /> Nộp hoa hồng mô phỏng (DEMO)
             </button>
           </div>
         )}
@@ -870,7 +870,7 @@ export default function OwnerDashboard({ user, setUser }) {
                                 ) : (
                                   <div>
                                     <span className="font-bold text-emerald-700 flex items-center gap-1">
-                                      <QrCode className="w-3.5 h-3.5" /> Chuyển khoản VietQR
+                                      <QrCode className="w-3.5 h-3.5" /> Chuyển khoản mô phỏng (DEMO)
                                     </span>
                                     <div className="text-[10px] text-emerald-600 mt-0.5">
                                       Đã đối soát tự động
@@ -1156,7 +1156,7 @@ export default function OwnerDashboard({ user, setUser }) {
 
         </div>
 
-        {/* MODAL NỘP HOA HỒNG CHO ADMIN QUA VIETQR */}
+        {/* MODAL NỘP HOA HỒNG CHO ADMIN MÔ PHỎNG (DEMO) */}
         {showSettleModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100">
@@ -1216,7 +1216,7 @@ export default function OwnerDashboard({ user, setUser }) {
           </div>
         )}
 
-        {/* FEATURE 01: MODAL NỘP KHOẢN BẢO ĐẢM KÝ QUỸ VIETQR (1.000.000 VND) */}
+        {/* FEATURE 01: MODAL NỘP KHOẢN BẢO ĐẢM KÝ QUỸ MÔ PHỎNG DEMO (1.000.000 VND) */}
         {showDepositModal && depositPaymentReq && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">

@@ -1021,7 +1021,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
         </div>
       </main>
 
-      {/* MODAL THANH TOÁN 100% (VIETQR HOẶC TIỀN MẶT) */}
+      {/* MODAL THANH TOÁN 100% (MÔ PHỎNG DEMO HOẶC TIỀN MẶT) */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative border border-slate-100 max-h-[92vh] overflow-y-auto">
@@ -1074,7 +1074,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                   {paymentMethod === 'QR' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
                 </div>
                 <span className="text-[11px] text-slate-500 leading-tight">
-                  Thanh toán 100% tự động qua VietQR MBBank
+                  Thanh toán trực tuyến mô phỏng (DEMO 100%)
                 </span>
               </button>
 

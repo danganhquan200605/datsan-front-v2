@@ -797,11 +797,11 @@ export default function Home({ user, setUser }) {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-black text-xs text-slate-900 flex items-center gap-1">
-                    <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Quét VietQR
+                    <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Quét mã mô phỏng (DEMO)
                   </span>
                   {paymentMethod === 'QR' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
                 </div>
-                <span className="text-[10px] text-slate-500">Thanh toán 100% qua MBBank</span>
+                <span className="text-[10px] text-slate-500">Thanh toán trực tuyến mô phỏng 100%</span>
               </button>
 
               <button

@@ -284,7 +284,7 @@ export default function AdminDashboard({ user, setUser }) {
         ? `⚠️ Nhắc nộp hoa hồng sàn DatSanOnline ${isOverdue ? '(Quá hạn 1 tuần)' : ''}`
         : `📢 Thông báo từ Ban Quản Trị sàn DatSanOnline`;
       const content = debtAmount > 0
-        ? `Chào ${owner.hoten}, bạn đang có khoản nợ hoa hồng 10% các đơn tiền mặt là ${debtAmount.toLocaleString('vi-VN')} đ ${isOverdue ? '(Đã quá hạn hơn 7 ngày)' : ''}. Vui lòng truy cập trang Quản Lý Sân và quét mã VietQR để nộp hoa hồng cho sàn.`
+        ? `Chào ${owner.hoten}, bạn đang có khoản nợ hoa hồng 10% các đơn tiền mặt là ${debtAmount.toLocaleString('vi-VN')} đ ${isOverdue ? '(Đã quá hạn hơn 7 ngày)' : ''}. Vui lòng truy cập trang Quản Lý Sân để quyết toán hoa hồng mô phỏng (DEMO) cho sàn.`
         : `Chào ${owner.hoten}, Ban Quản Trị DatSanOnline gửi lời chào và nhắc nhở bạn duy trì chất lượng phục vụ sân thể thao.`;
 
       await sendNotification({
