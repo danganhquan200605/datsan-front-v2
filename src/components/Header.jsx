@@ -5,6 +5,7 @@ import {
   Calendar, AlertTriangle, DollarSign, CheckCircle2, X
 } from 'lucide-react';
 import { fetchNotifications, markNotificationAsRead, broadcastAuthChange } from '../supabaseClient';
+import LoginModal from './LoginModal';
 
 export default function Header({ 
   user, 
@@ -17,6 +18,7 @@ export default function Header({
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [activeToast, setActiveToast] = useState(null);
+  const [showInternalLoginModal, setShowInternalLoginModal] = useState(false);
   const notifRef = useRef(null);
   const knownNotifIds = useRef(new Set());
   const navigate = useNavigate();
@@ -399,7 +401,7 @@ export default function Header({
               </>
             ) : (
               <button 
-                onClick={onLoginClick || (() => navigate('/login'))} 
+                onClick={typeof onLoginClick === 'function' ? onLoginClick : () => setShowInternalLoginModal(true)} 
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm transition"
               >
                 <LogIn className="w-4 h-4" /> Đăng nhập
@@ -442,6 +444,15 @@ export default function Header({
         </div>
       )}
 
+      {/* MODAL ĐĂNG NHẬP CHUẨN TOÀN HỆ THỐNG */}
+      <LoginModal
+        isOpen={showInternalLoginModal}
+        onClose={() => setShowInternalLoginModal(false)}
+        onSuccess={(loggedInUser) => {
+          if (typeof setUser === 'function') setUser(loggedInUser);
+          setShowInternalLoginModal(false);
+        }}
+      />
     </>
   );
 }

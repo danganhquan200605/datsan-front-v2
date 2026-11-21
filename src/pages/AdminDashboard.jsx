@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   ShieldCheck, Users, Building2, CheckCircle2, XCircle, 
   RefreshCw, MapPin, Tag, UserCheck, Search, DollarSign, Eye, X, Award, CheckSquare,
   AlertTriangle, ShieldAlert, ArrowRight, Bell
 } from 'lucide-react';
-import { supabase, verifyPhoneOtp, sendNotification, broadcastAuthChange } from '../supabaseClient';
+import { supabase, sendNotification, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
+import LoginModal from '../components/LoginModal';
 
 const parseMeta = (ghichu) => {
   try { return JSON.parse(ghichu || '{}'); } catch { return {}; }
@@ -34,21 +36,23 @@ export default function AdminDashboard({ user, setUser }) {
     return () => window.removeEventListener('datsan_auth_change', handleAuthChange);
   }, []);
 
+  const location = useLocation();
+
   const [activeTab, setActiveTab] = useState(() => {
     const tabParam = new URLSearchParams(window.location.search).get('tab');
     return tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS'].includes(tabParam) ? tabParam : 'PENDING_FIELDS';
   });
 
   useEffect(() => {
-    const tabParam = new URLSearchParams(window.location.search).get('tab');
+    const tabParam = new URLSearchParams(location.search).get('tab');
     if (tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
-  }, [window.location.search]);
+  }, [location.search]);
   const [userRoleFilter, setUserRoleFilter] = useState('ALL'); // ALL | KHACHHANG | CHUSAN
   const [loading, setLoading] = useState(true);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
-  const [isReauthenticating, setIsReauthenticating] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // States Dữ Liệu
   const [sanList, setSanList] = useState([]);
@@ -87,41 +91,14 @@ export default function AdminDashboard({ user, setUser }) {
         supabase.from('datsan').select('*')
       ]);
 
-      // Tự động khôi phục phiên nếu token hết hạn (401 / JWT expired)
-      if (userRes?.error && (
-        String(userRes.error.message || '').toLowerCase().includes('token') ||
-        String(userRes.error.message || '').toLowerCase().includes('auth') ||
-        String(userRes.error.message || '').toLowerCase().includes('401')
-      )) {
-        try {
-          const authRes = await verifyPhoneOtp('+84901111111', '123456');
-          if (authRes?.accessToken) {
-            sessionStorage.setItem('datsan_access_token', authRes.accessToken);
-            if (authRes.refreshToken) sessionStorage.setItem('datsan_refresh_token', authRes.refreshToken);
-            if (authRes.user) {
-              sessionStorage.setItem('datsan_user', JSON.stringify(authRes.user));
-              setCurrentUser(authRes.user);
-              if (typeof setUser === 'function') setUser(authRes.user);
-              broadcastAuthChange(authRes.user);
-            }
-            const [retryUserRes, retryBookingRes] = await Promise.all([
-              supabase.from('nguoidung').select('*').order('manguoidung', { ascending: false }),
-              supabase.from('datsan').select('*')
-            ]);
-            userRes = retryUserRes;
-            bookingRes = retryBookingRes;
-          }
-        } catch (authErr) {
-          console.warn('Không thể tự động khôi phục phiên Admin:', authErr);
-        }
-      }
-
       const rawSan = sanRes.data || [];
       const rawVt = vtRes.data || [];
       const rawUsers = userRes.data || [];
       const rawBookings = bookingRes.data || [];
 
-      setIsSessionExpired(userRes?.error ? true : false);
+      // Kiểm tra trạng thái phân quyền Admin
+      const hasAuthError = !!(userRes?.error || bookingRes?.error);
+      setIsSessionExpired(hasAuthError);
 
       // Chuẩn hóa danh sách người dùng từ bảng nguoidung
       const formattedUsers = rawUsers.map(u => ({
@@ -204,29 +181,6 @@ export default function AdminDashboard({ user, setUser }) {
       console.error('Lỗi tải dữ liệu Admin:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleQuickAdminLogin = async () => {
-    try {
-      setIsReauthenticating(true);
-      const authRes = await verifyPhoneOtp('+84901111111', '123456');
-      if (authRes?.accessToken) {
-        sessionStorage.setItem('datsan_access_token', authRes.accessToken);
-        if (authRes.refreshToken) sessionStorage.setItem('datsan_refresh_token', authRes.refreshToken);
-        if (authRes.user) {
-          sessionStorage.setItem('datsan_user', JSON.stringify(authRes.user));
-          setCurrentUser(authRes.user);
-          if (typeof setUser === 'function') setUser(authRes.user);
-          broadcastAuthChange(authRes.user);
-        }
-        setIsSessionExpired(false);
-        await fetchAdminData();
-      }
-    } catch (err) {
-      alert('Không thể khôi phục phiên đăng nhập: ' + err.message);
-    } finally {
-      setIsReauthenticating(false);
     }
   };
 
@@ -352,7 +306,7 @@ export default function AdminDashboard({ user, setUser }) {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased pb-16">
-      <Header user={currentUser} setUser={setCurrentUser} />
+      <Header user={currentUser} setUser={setCurrentUser} onLoginClick={() => setShowLoginModal(true)} />
 
       <main className="max-w-[1440px] mx-auto px-6 pt-8">
         
@@ -378,23 +332,22 @@ export default function AdminDashboard({ user, setUser }) {
         </div>
 
         {/* BANNER CẢNH BÁO HẾT HẠN PHIÊN */}
-        {isSessionExpired && (
+        {(isSessionExpired || !currentUser || (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase() !== 'ADMIN') && (
           <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
               <div>
-                <div className="text-sm font-bold text-amber-900">Phiên Quản Trị Viên (Admin) Đã Hết Hạn</div>
+                <div className="text-sm font-bold text-amber-900">Yêu cầu quyền Quản Trị Viên (Super Admin)</div>
                 <div className="text-xs text-amber-700">
-                  Dữ liệu tài khoản người dùng và doanh thu yêu cầu xác thực Admin. Vui lòng bấm để khôi phục phiên đăng nhập.
+                  Dữ liệu tài khoản người dùng, đơn đặt sân và doanh thu yêu cầu xác thực Admin. Vui lòng đăng nhập tài khoản Quản trị để quản lý.
                 </div>
               </div>
             </div>
             <button
-              onClick={handleQuickAdminLogin}
-              disabled={isReauthenticating}
-              className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow transition whitespace-nowrap disabled:opacity-50"
+              onClick={() => setShowLoginModal(true)}
+              className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow transition whitespace-nowrap"
             >
-              {isReauthenticating ? 'Đang khôi phục...' : '⚡ Khôi Phục Phiên Admin Ngay'}
+              🔑 Đăng Nhập Quản Trị Viên
             </button>
           </div>
         )}
@@ -1172,6 +1125,17 @@ export default function AdminDashboard({ user, setUser }) {
           </div>
         </div>
       )}
+
+      {/* MODAL ĐĂNG NHẬP ADMIN */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={(loggedInUser) => {
+          setCurrentUser(loggedInUser);
+          if (typeof setUser === 'function') setUser(loggedInUser);
+          fetchAdminData();
+        }}
+      />
 
     </div>
   );

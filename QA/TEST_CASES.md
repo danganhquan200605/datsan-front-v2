@@ -1,0 +1,31 @@
+# BẢNG TẬP HỢP TEST CASES (TEST CASES SPECIFICATION)
+
+| Test Case ID | Module | Mô tả bài test | Điều kiện tiên quyết | Các bước thực hiện | Kết quả kỳ vọng | Trạng thái thực tế |
+|---|---|---|---|---|---|---|
+| **TC-AUTH-01** | Auth | Đăng nhập tài khoản Khách hàng thành công | Chưa đăng nhập | 1. Bấm Đăng nhập<br>2. Nhập `0905123456`<br>3. Bấm Gửi OTP<br>4. Nhập `123456` | Đăng nhập thành công, avatar hiển thị tên Khách hàng, vai trò `KHACHHANG` | **PASS** |
+| **TC-AUTH-02** | Auth | Đăng nhập tài khoản Chủ sân thành công | Chưa đăng nhập | 1. Bấm Đăng nhập<br>2. Nhập `0905777888`<br>3. Bấm Gửi OTP<br>4. Nhập `123456` | Đăng nhập thành công, Header xuất hiện nút "Quản Lý Sân" màu cam | **PASS** |
+| **TC-AUTH-03** | Auth | Đăng nhập tài khoản Admin thành công | Chưa đăng nhập | 1. Bấm Đăng nhập<br>2. Nhập `0901111111`<br>3. Bấm Gửi OTP<br>4. Nhập `123456` | Đăng nhập thành công, Header xuất hiện nút "Trang Admin" | **PASS** |
+| **TC-AUTH-04** | Auth | Nhập SĐT không hợp lệ | Đang mở modal đăng nhập | 1. Nhập `123`<br>2. Bấm Gửi OTP | Hệ thống hiển thị cảnh báo yêu cầu nhập 10 chữ số hợp lệ | **PASS** |
+| **TC-AUTH-05** | Auth | Nhập mã OTP sai | Đã nhận OTP | 1. Nhập OTP `000000`<br>2. Bấm Xác nhận | Báo lỗi "Mã OTP không hợp lệ hoặc đã hết hạn" | **PASS** |
+| **TC-AUTH-06** | Auth (Security) | Kiểm tra bảo vệ route `/admin` (Backdoor test) | Trình duyệt ẩn danh, chưa đăng nhập | 1. Mở tab mới<br>2. Gõ trực tiếp URL `https://datsan-front-v2.vercel.app/admin` | Hệ thống KHÔNG được tự động đăng nhập làm Admin; yêu cầu xác thực | **FAIL (CRITICAL BUG)** |
+| **TC-AUTH-07** | Auth | Đăng xuất từ Trang chủ | Đã đăng nhập | 1. Bấm Avatar góc phải<br>2. Bấm Đăng xuất | Phiên đăng nhập bị xóa, Header chuyển về nút "Đăng nhập", ở nguyên tại trang chủ | **PASS** |
+| **TC-AUTH-08** | Auth | Đăng xuất từ Trang chi tiết sân (`/san/1`) | Đã đăng nhập, đang ở `/san/1` | 1. Bấm Avatar góc phải<br>2. Bấm Đăng xuất | Phiên đăng nhập bị xóa, URL giữ nguyên `/san/1`, nội dung sân giữ nguyên, Header hiển thị nút "Đăng nhập" | **PASS** |
+| **TC-AUTH-09** | Auth | Đăng xuất từ Trang Admin (`/admin`) | Đang đăng nhập Admin | 1. Bấm Avatar<br>2. Bấm Đăng xuất | Phiên Admin bị xóa, ở nguyên tại `/admin`, không bị chuyển trang | **PASS (với bug kèm theo ở TC-AUTH-06)** |
+| **TC-AUTH-10** | Auth (RBAC) | Khách hàng truy cập trái phép trang Admin | Đăng nhập tài khoản Khách hàng `0905123456` | 1. Gõ URL `/admin` | Hệ thống chặn hoặc từ chối thực thi các lệnh quản trị, bảo vệ dữ liệu Admin | **FAIL (Bị hổng quyền do BUG-001)** |
+| **TC-BOOK-01** | Booking | Đặt sân thành công thanh toán QR | Đã đăng nhập Khách hàng | 1. Chọn sân bóng đá<br>2. Chọn ngày & 1 ca<br>3. Chọn thanh toán VietQR<br>4. Xác nhận đặt sân | Đơn đặt thành công, trạng thái `DA_THANH_TOAN`, hoa hồng 10% được sàn ghi nhận | **PASS** |
+| **TC-BOOK-02** | Booking | Đặt sân thành công thanh toán tiền mặt | Đã đăng nhập Khách hàng | 1. Chọn sân<br>2. Chọn ca<br>3. Chọn Tiền mặt<br>4. Xác nhận | Đơn đặt thành công, trạng thái `CHO_THI_DAU`, ghi nhận phí hoa hồng chờ chủ sân nộp | **PASS** |
+| **TC-BOOK-03** | Booking | Đặt sân với ngày trong quá khứ | Đang ở trang đặt sân | 1. Cố tình chọn ngày hôm qua | Backend RPC `create_booking` chặn lại với lỗi `Choose a future date...` | **PASS** |
+| **TC-BOOK-04** | Booking (Concurrency) | Đặt trùng khung giờ đồng thời (Race condition) | 2 phiên đặt sân cùng 1 sân và 1 ca | 1. Cả 2 gửi request đặt cùng thời điểm | Database kích hoạt `pg_advisory_xact_lock`, chỉ 1 đơn thành công, đơn thứ 2 báo lỗi ca đã có người đặt | **PASS** |
+| **TC-BOOK-05** | Booking | Đặt sân khi chưa đăng nhập | Khách vãng lai (Guest) | 1. Vào chi tiết sân<br>2. Chọn ca<br>3. Bấm Đặt sân | Tự động hiển thị Modal yêu cầu đăng nhập trước khi tạo đơn | **PASS** |
+| **TC-PAY-01** | Pricing | Tính tổng tiền thuê kèm phụ phí dịch vụ | Ở trang chi tiết sân | 1. Chọn sân bóng đá 200k/ca<br>2. Chọn thêm Nước (150k) + Áo bib (50k) | Tổng tiền tính chính xác: 200k + 150k + 50k = 400.000 đ | **PASS** |
+| **TC-PAY-02** | Commission | Trích xuất hoa hồng sàn 10% tự động | Có đơn đặt sân mới | 1. Đơn 300.000 đ tạo thành công | Backend tự tính `commissionAmount = 30.000 đ` (10%) lưu vào `ghichu` | **PASS** |
+| **TC-PAY-03** | Commission | Chủ sân đối soát nộp hoa hồng | Chủ sân có sổ nợ hoa hồng | 1. Vào `/owner`<br>2. Bấm "Nộp hoa hồng"<br>3. Quét mã QR MBBank<br>4. Xác nhận nộp | Số nợ hoa hồng reset về 0 đ, trạng thái cập nhật `DA_QUYET_TOAN` | **PASS** |
+| **TC-FIELD-01** | Field Mgmt | Khách hàng nộp hồ sơ đăng ký sân mới | Tài khoản `0905123456` | 1. Vào `/register-field`<br>2. Điền tên, giá, loại sân, vị trí<br>3. Bấm Gửi đăng ký | Hồ sơ được tạo thành công với trạng thái `CHO_DUYET`, tạo thông báo cho Admin | **PASS** |
+| **TC-FIELD-02** | Field Mgmt | Admin xem hồ sơ sân mới chờ duyệt | Admin đăng nhập | 1. Vào `/admin`<br>2. Xem tab "Hồ Sơ Sân Chờ Duyệt" | Hiển thị cụm sân vừa đăng ký ("Sân của Quân"), số lượng hồ sơ chờ duyệt hiển thị chính xác | **PASS** |
+| **TC-FIELD-03** | Field Mgmt | Admin phê duyệt sân | Admin ở tab chờ duyệt | 1. Bấm "Duyệt Kích Hoạt Sân" | Trạng thái sân chuyển thành `HOATDONG`, sân xuất hiện ngay trên trang chủ | **PASS** |
+| **TC-FIELD-04** | Field Mgmt | Admin từ chối / khóa sân | Admin ở danh sách sân | 1. Bấm "Từ chối" hoặc "Khóa sân" | Trạng thái chuyển thành `TU_CHOI`, sân bị ẩn khỏi danh sách trang chủ | **PASS** |
+| **TC-SEARCH-01** | Search | Lọc sân theo môn thể thao | Trang chủ | 1. Chọn tab Cầu lông / Pickleball / Bóng đá | Chỉ hiển thị các sân thuộc đúng môn thể thao đã chọn | **PASS** |
+| **TC-SEARCH-02** | Search | Lọc sân theo Quận / Huyện | Trang chủ | 1. Chọn quận "Hải Châu" | Lưới sân chỉ hiển thị các cụm sân có địa chỉ tại Quận Hải Châu | **PASS** |
+| **TC-SEARCH-03** | Search | Tìm kiếm sân theo từ khóa | Trang chủ | 1. Gõ "Tuyên Sơn" vào thanh tìm kiếm | Hiển thị chính xác "Tuyên Sơn Arena" | **PASS** |
+| **TC-NOTIF-01** | Notification (RBAC) | Lọc bảo mật thông báo theo vai trò | Khách hàng đăng nhập | 1. Bấm chuông thông báo | KHÔNG hiển thị thông báo thu hoa hồng dành riêng cho Admin/Chủ sân | **PASS** |
+| **TC-NOTIF-02** | Notification | Click thông báo tự động chuyển module | Có thông báo hồ sơ mới | 1. Click vào thông báo "Hồ sơ sân mới chờ duyệt" | Tự động chuyển tới `/admin?tab=PENDING_FIELDS` và đánh dấu đã đọc | **PASS** |

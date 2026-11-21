@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase, settleOwnerBooking, triggerAutoComplete, broadcastAuthChange } from '../supabaseClient';
 import Header from '../components/Header';
+import LoginModal from '../components/LoginModal';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -93,6 +94,7 @@ export default function OwnerDashboard({ user, setUser }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Helper parse metadata ghichu
   const parseMeta = (ghichu) => {
@@ -269,7 +271,7 @@ export default function OwnerDashboard({ user, setUser }) {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans antialiased pb-16">
-      <Header user={currentUser} setUser={setCurrentUser} />
+      <Header user={currentUser} setUser={setCurrentUser} onLoginClick={() => setShowLoginModal(true)} />
 
       <main className="max-w-[1440px] mx-auto px-6 pt-8">
         
@@ -300,6 +302,27 @@ export default function OwnerDashboard({ user, setUser }) {
             </button>
           </div>
         </div>
+
+        {/* BANNER YÊU CẦU ĐĂNG NHẬP CHỦ SÂN */}
+        {(!currentUser || (!['CHUSAN', 'ADMIN'].includes((currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase()))) && (
+          <div className="mb-6 p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <Building2 className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+              <div>
+                <div className="text-sm font-bold text-emerald-900">Yêu cầu quyền Chủ Sân</div>
+                <div className="text-xs text-emerald-700">
+                  Vui lòng đăng nhập với tài khoản Chủ Sân để quản lý sân bóng, lịch thi đấu và doanh thu.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow transition whitespace-nowrap"
+            >
+              🔑 Đăng Nhập Chủ Sân
+            </button>
+          </div>
+        )}
 
         {/* THỐNG KÊ KPI CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
@@ -830,6 +853,17 @@ export default function OwnerDashboard({ user, setUser }) {
         )}
 
       </main>
+
+      {/* MODAL ĐĂNG NHẬP CHỦ SÂN */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={(loggedInUser) => {
+          setCurrentUser(loggedInUser);
+          if (typeof setUser === 'function') setUser(loggedInUser);
+          fetchOwnerData();
+        }}
+      />
     </div>
   );
 }
