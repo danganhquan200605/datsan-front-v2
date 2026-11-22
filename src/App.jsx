@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // Import các trang giao diện chính
 import Home from './pages/Home';
@@ -16,7 +16,7 @@ import NotFound from './pages/NotFound';
 import { getCurrentUser } from './supabaseClient';
 
 // Route bảo vệ nội bộ: Nếu chưa đăng nhập hoặc sai vai trò, hiển thị giao diện trung tính 404
-function ProtectedInternalRoute({ allowedRoles, user, setUser, children }) {
+function ProtectedInternalRoute({ allowedRoles, redirectAdminTo = null, user, setUser, children }) {
   let activeUser = user;
   if (activeUser === undefined) {
     try {
@@ -35,6 +35,7 @@ function ProtectedInternalRoute({ allowedRoles, user, setUser, children }) {
   // 2. Nếu đã đăng nhập nhưng không đủ quyền: Hiển thị trang 404 trung tính
   const role = String(activeUser.VaiTro || activeUser.vaitro || activeUser.role || '').toUpperCase();
   if (!allowedRoles.includes(role)) {
+    if (role === 'ADMIN' && redirectAdminTo) return <Navigate to={redirectAdminTo} replace />;
     return <NotFound user={activeUser} setUser={setUser} />;
   }
 
@@ -89,7 +90,8 @@ function App() {
           path="/owner/*" 
           element={
             <ProtectedInternalRoute 
-              allowedRoles={['CHUSAN', 'ADMIN']} 
+              allowedRoles={['CHUSAN']}
+              redirectAdminTo="/admin" 
               user={currentUser} 
               setUser={setCurrentUser}
             >
