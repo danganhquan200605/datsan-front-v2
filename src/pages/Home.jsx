@@ -890,7 +890,7 @@ export default function Home({ user, setUser }) {
                         🛠️ Tùy chọn kiểm thử (Dành cho Tester & Quản trị viên)
                       </summary>
                       <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-left">
-                        <p className="text-[10px] text-slate-500">Mô phỏng trường hợp thanh toán bị gián đoạn hoặc thất bại từ ngân hàng:</p>
+                        <p className="text-[10px] text-slate-500">Tùy chọn kiểm thử trường hợp thanh toán bị gián đoạn hoặc thất bại:</p>
                         <button
                           type="button"
                           disabled={isSubmitting}

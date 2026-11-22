@@ -61,6 +61,8 @@ export default function AdminDashboard({ user, setUser }) {
     const tabParam = new URLSearchParams(location.search).get('tab');
     if (tabParam && ['PENDING_FIELDS', 'ALL_FIELDS', 'USERS', 'DEPOSITS', 'REFUNDS'].includes(tabParam)) {
       setActiveTab(tabParam);
+    } else {
+      setActiveTab('PENDING_FIELDS');
     }
   }, [location.search]);
   const [userRoleFilter, setUserRoleFilter] = useState('ALL'); // ALL | KHACHHANG | CHUSAN
@@ -210,16 +212,52 @@ export default function AdminDashboard({ user, setUser }) {
     }
   };
 
+  const refreshAllAdminData = async () => {
+    const role = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
+    if (!currentUser || role !== 'ADMIN') {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchAdminData(),
+        fetchAdminDepositsData(),
+        fetchAdminRefundsData()
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const role = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
     if (currentUser && role === 'ADMIN') {
-      fetchAdminData();
-      fetchAdminDepositsData();
-      fetchAdminRefundsData();
+      refreshAllAdminData();
     } else {
       setLoading(false);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    const onRefreshEvent = (e) => {
+      if (e?.detail?.resetTab) {
+        setActiveTab('PENDING_FIELDS');
+        setSearchTerm('');
+      }
+      refreshAllAdminData();
+    };
+    window.addEventListener('admin:refresh-data', onRefreshEvent);
+    return () => window.removeEventListener('admin:refresh-data', onRefreshEvent);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (location.state?.refreshKey) {
+      setActiveTab('PENDING_FIELDS');
+      setSearchTerm('');
+      refreshAllAdminData();
+    }
+  }, [location.state?.refreshKey]);
 
   // Admin Xác minh nhận tiền Ký Quỹ & Phê duyệt (FEATURE 01)
   const handleVerifyDeposit = async (transactionId, isApproved) => {
@@ -430,29 +468,6 @@ export default function AdminDashboard({ user, setUser }) {
           </div>
         </div>
 
-        {/* BANNER CHẾ ĐỘ MÔ PHỎNG TÀI CHÍNH (DEMO FINANCIAL MODE) */}
-        <div className="mb-6 p-4 bg-gradient-to-r from-amber-500/10 via-amber-400/15 to-emerald-500/10 border-2 border-amber-400/60 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-sm shrink-0">
-              ⚡
-            </div>
-            <div>
-              <div className="text-sm font-black text-amber-950 flex items-center gap-2">
-                KHU VỰC QUẢN TRỊ TÀI CHÍNH MÔ PHỎNG (DEMO FINANCIAL MODE)
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-300">
-                  SIMULATION ACTIVE
-                </span>
-              </div>
-              <div className="text-xs text-amber-900/80 mt-0.5">
-                Mọi giao dịch ký quỹ, hoàn tiền, công nợ hoa hồng 10% và chuyển khoản đều được giả lập an toàn trên hệ thống. Không có luồng tiền thật.
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-bold text-amber-800 bg-amber-100/80 px-3 py-1.5 rounded-xl shrink-0">
-            <span>STAGING / DEMO</span>
-          </div>
-        </div>
-
         {/* BANNER CẢNH BÁO HẾT HẠN PHIÊN */}
         {isSessionExpired && (
           <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
@@ -521,28 +536,28 @@ export default function AdminDashboard({ user, setUser }) {
           </div>
 
           {/* Ô THỐNG KÊ DOANH THU ADMIN/HOA HỒNG SÀN */}
-          <div className="bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-2xl p-5 shadow-md border border-emerald-900 col-span-1 sm:col-span-2 lg:col-span-1">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm col-span-1 sm:col-span-2 lg:col-span-1">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Doanh Thu Hoa Hồng (10% Demo)</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hoa hồng nền tảng (10%)</span>
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-xs">
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-xl font-black text-amber-400">
+            <div className="text-2xl font-black text-emerald-800">
               {(revenueStats.qrCommission + revenueStats.cashCommissionSettled).toLocaleString('vi-VN')} đ
             </div>
-            <div className="mt-2 pt-2 border-t border-emerald-700/50 space-y-1 text-[10px]">
-              <div className="flex justify-between text-emerald-200">
-                <span>• Đã thu tự động (QR):</span>
-                <span className="font-bold text-white">{revenueStats.qrCommission.toLocaleString('vi-VN')} đ</span>
+            <div className="mt-2 pt-2 border-t border-slate-100 space-y-1 text-xs">
+              <div className="flex justify-between text-slate-600">
+                <span>• Đã thu trực tuyến:</span>
+                <span className="font-bold text-slate-900">{revenueStats.qrCommission.toLocaleString('vi-VN')} đ</span>
               </div>
-              <div className="flex justify-between text-emerald-200">
-                <span>• Chủ sân đã nộp (Tiền mặt):</span>
-                <span className="font-bold text-white">{revenueStats.cashCommissionSettled.toLocaleString('vi-VN')} đ</span>
+              <div className="flex justify-between text-slate-600">
+                <span>• Chủ sân đã nộp:</span>
+                <span className="font-bold text-slate-900">{revenueStats.cashCommissionSettled.toLocaleString('vi-VN')} đ</span>
               </div>
-              <div className="flex justify-between text-amber-300 font-bold">
-                <span>• Sổ nợ chủ sân chưa nộp:</span>
-                <span>{revenueStats.cashCommissionPending.toLocaleString('vi-VN')} đ</span>
+              <div className="flex justify-between text-amber-900 bg-amber-50 px-2 py-0.5 rounded-lg font-bold">
+                <span>• Sổ nợ chưa nộp:</span>
+                <span className="font-black text-amber-900">{revenueStats.cashCommissionPending.toLocaleString('vi-VN')} đ</span>
               </div>
             </div>
           </div>
@@ -588,7 +603,7 @@ export default function AdminDashboard({ user, setUser }) {
                   activeTab === 'DEPOSITS' ? 'text-purple-600 border-b-2 border-purple-500' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Ký Quỹ Chủ Sân (Demo) ({pendingDepositRequests.length > 0 ? `Chờ duyệt: ${pendingDepositRequests.length}` : depositsList.length})
+                Quản lý ký quỹ ({pendingDepositRequests.length > 0 ? `Chờ duyệt: ${pendingDepositRequests.length}` : depositsList.length})
               </button>
 
               <button
@@ -597,7 +612,7 @@ export default function AdminDashboard({ user, setUser }) {
                   activeTab === 'REFUNDS' ? 'text-rose-600 border-b-2 border-rose-500' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Hoàn Tiền & Tranh Chấp (Demo) ({adminDisputes.length > 0 ? `Tranh chấp: ${adminDisputes.length}` : adminRefunds.length})
+                Hoàn tiền & Tranh chấp ({adminDisputes.length > 0 ? `Tranh chấp: ${adminDisputes.length}` : adminRefunds.length})
               </button>
             </div>
 
@@ -993,7 +1008,7 @@ export default function AdminDashboard({ user, setUser }) {
                     </div>
                   </div>
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase">Tổng Tiền Quỹ Nắm Giữ (Mô phỏng)</span>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase">Số dư quỹ ghi nhận</span>
                     <div className="text-xl font-black text-purple-700 mt-1">
                       {depositsList.reduce((acc, d) => acc + Number(d.sodu_hientai || 0), 0).toLocaleString('vi-VN')} đ
                     </div>
@@ -1012,10 +1027,10 @@ export default function AdminDashboard({ user, setUser }) {
                     <div>
                       <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-600" />
-                        Yêu Cầu Nộp Ký Quỹ Chờ Đối Soát Mô Phỏng (DEMO) ({pendingDepositRequests.length})
+                        Yêu cầu nộp ký quỹ chờ đối soát ({pendingDepositRequests.length})
                       </h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Đối soát giao dịch nộp ký quỹ mô phỏng 1.000.000đ trước khi kích hoạt trạng thái ĐÃ KÝ QUỸ cho Chủ Sân.
+                        Đối soát giao dịch nộp ký quỹ 1.000.000đ trước khi kích hoạt trạng thái ĐÃ KÝ QUỸ cho Chủ Sân.
                       </p>
                     </div>
                     <button
@@ -1156,10 +1171,9 @@ export default function AdminDashboard({ user, setUser }) {
             {/* TAB 5: QUẢN LÝ HOÀN TIỀN & TRANH CHẤP (FEATURE 02) */}
             {activeTab === 'REFUNDS' && (
               <div className="space-y-6">
-                {/* THÔNG BÁO DEMO FINANCIAL MODE */}
-                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 text-xs text-amber-900 flex items-center gap-2.5">
-                  <span className="px-2 py-0.5 bg-amber-200 text-amber-900 font-black rounded-lg text-[10px]">DEMO</span>
-                  <span>Hệ thống hoạt động ở chế độ mô phỏng tài chính. Mọi số dư, hoàn tiền và khấu trừ ký quỹ đều là dữ liệu giả lập.</span>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-600 flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Danh sách yêu cầu hoàn tiền và tiến trình đối soát giữa khách hàng và chủ sân. Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.</span>
                 </div>
 
                 {/* THỐNG KÊ HOÀN TIỀN */}

@@ -6,7 +6,7 @@ import {
   Tv, Heart, ExternalLink, Shield, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, User, Users,
   Search, Bell, LogIn, LogOut, Building2, PlusCircle, LayoutDashboard, X, QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow, calculateSlotsDurationMinutes } from '../supabaseClient';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -404,7 +404,9 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
         setPendingBookingData({
           bookingId,
           total: totalPrice,
-          sanName: sanInfo?.TenSan || 'Sân thể thao'
+          sanName: sanInfo?.TenSan || 'Sân thể thao',
+          slots: selectedSlots,
+          durationMinutes: calculateSlotsDurationMinutes(selectedSlots)
         });
         setSimulationFailed(false);
       }
@@ -1186,14 +1188,20 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                       ⚠️ Thanh toán chưa hoàn tất. Khung giờ của bạn đang được tạm giữ an toàn:
                     </div>
 
-                    <button
-                      disabled={isSubmitting}
-                      onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE', 'SWITCH_CASH')}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      Chuyển sang thanh toán tiền mặt tại sân
-                    </button>
+                    {(pendingBookingData?.durationMinutes ?? 0) <= 120 ? (
+                      <button
+                        disabled={isSubmitting}
+                        onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE', 'SWITCH_CASH')}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <DollarSign className="w-4 h-4" />
+                        Chuyển sang thanh toán tiền mặt tại sân
+                      </button>
+                    ) : (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] text-center font-medium">
+                        ⚠️ Đơn đặt sân có thời lượng {pendingBookingData?.durationMinutes} phút (&gt; 2 giờ). Thanh toán tiền mặt chỉ áp dụng tối đa 2 giờ. Vui lòng thanh toán trực tuyến hoặc hủy đơn.
+                      </div>
+                    )}
 
                     <button
                       disabled={isSubmitting}
@@ -1243,85 +1251,113 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                 </div>
 
                 {/* CHỌN PHƯƠNG THỨC */}
-                <div className="grid grid-cols-2 gap-3 mb-5">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('QR')}
-                    className={`p-3.5 rounded-2xl border text-left transition flex flex-col gap-2 cursor-pointer ${
-                      paymentMethod === 'QR'
-                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-xs text-slate-900 flex items-center gap-1.5">
-                        <QrCode className="w-4 h-4 text-emerald-600" /> Thanh toán QR
-                      </span>
-                      {paymentMethod === 'QR' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <span className="text-[11px] text-slate-500 leading-tight">
-                      Quét mã QR và xác nhận thanh toán trực tuyến
-                    </span>
-                  </button>
+                {(() => {
+                  const totalSelectedMinutes = calculateSlotsDurationMinutes(selectedSlots);
+                  const isCashExceeded = totalSelectedMinutes > 120;
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-3 mb-5">
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('QR')}
+                          className={`p-3.5 rounded-2xl border text-left transition flex flex-col gap-2 cursor-pointer ${
+                            paymentMethod === 'QR'
+                              ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
+                              : 'border-slate-200 hover:border-slate-300 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                              <QrCode className="w-4 h-4 text-emerald-600" /> Thanh toán QR
+                            </span>
+                            {paymentMethod === 'QR' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
+                          </div>
+                          <span className="text-[11px] text-slate-500 leading-tight">
+                            Quét mã QR và xác nhận thanh toán trực tuyến
+                          </span>
+                        </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('TIEN_MAT')}
-                    className={`p-3.5 rounded-2xl border text-left transition flex flex-col gap-2 cursor-pointer ${
-                      paymentMethod === 'TIEN_MAT'
-                        ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-xs text-slate-900 flex items-center gap-1.5">
-                        <DollarSign className="w-4 h-4 text-emerald-600" /> Tiền mặt tại sân
-                      </span>
-                      {paymentMethod === 'TIEN_MAT' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <span className="text-[11px] text-slate-500 leading-tight">
-                      Thanh toán trực tiếp cho Chủ sân khi đến thi đấu
-                    </span>
-                  </button>
-                </div>
-
-                {paymentMethod === 'QR' ? (
-                  <div className="space-y-4">
-                    <button
-                      disabled={isSubmitting}
-                      onClick={() => handleConfirmBooking('QR')}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      {isSubmitting ? 'Đang tạo đơn...' : 'Tiến Hành Đặt Sân & Thanh Toán QR'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-2 text-slate-700">
-                      <div className="flex items-start gap-2.5">
-                        <AlertCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                        <div className="space-y-1">
-                          <div className="font-bold text-slate-900">Quy trình thanh toán tiền mặt tại sân:</div>
-                          <p className="text-[11px] leading-relaxed text-slate-600">
-                            • Quý khách thanh toán <strong>{totalPrice.toLocaleString('vi-VN')} đ</strong> trực tiếp cho Chủ sân khi đến nhận sân.
-                          </p>
-                          <p className="text-[11px] leading-relaxed text-slate-600">
-                            • Khung giờ của bạn sẽ được giữ chỗ ngay sau khi xác nhận.
-                          </p>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('TIEN_MAT')}
+                          className={`p-3.5 rounded-2xl border text-left transition flex flex-col gap-2 cursor-pointer ${
+                            paymentMethod === 'TIEN_MAT'
+                              ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
+                              : 'border-slate-200 hover:border-slate-300 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                              <DollarSign className="w-4 h-4 text-emerald-600" /> Tiền mặt tại sân
+                            </span>
+                            {paymentMethod === 'TIEN_MAT' && <CheckCircle className="w-4 h-4 text-emerald-600" />}
+                          </div>
+                          <span className="text-[11px] text-slate-500 leading-tight">
+                            Thanh toán trực tiếp cho Chủ sân (Tối đa 2 giờ)
+                          </span>
+                          {isCashExceeded && (
+                            <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                              Quá 120 phút ({totalSelectedMinutes}p)
+                            </span>
+                          )}
+                        </button>
                       </div>
-                    </div>
 
-                    <button
-                      disabled={isSubmitting}
-                      onClick={() => handleConfirmBooking('TIEN_MAT')}
-                      className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      {isSubmitting ? 'ĐANG XỬ LÝ...' : 'Xác Nhận Đặt Sân (Trả Tiền Mặt)'}
-                    </button>
-                  </div>
-                )}
+                      {paymentMethod === 'QR' ? (
+                        <div className="space-y-4">
+                          <button
+                            disabled={isSubmitting}
+                            onClick={() => handleConfirmBooking('QR')}
+                            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            {isSubmitting ? 'Đang tạo đơn...' : 'Tiến Hành Đặt Sân & Thanh Toán QR'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {isCashExceeded ? (
+                            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-xs space-y-2 text-amber-900">
+                              <div className="flex items-start gap-2.5">
+                                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                  <div className="font-bold text-amber-950">Không Áp Dụng Thanh Toán Tiền Mặt</div>
+                                  <p className="text-[11px] leading-relaxed">
+                                    Thanh toán tiền mặt chỉ áp dụng cho đơn đặt sân tối đa 2 giờ (Đơn hiện tại: {totalSelectedMinutes} phút). Vui lòng giảm thời lượng hoặc chọn thanh toán trực tuyến.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-2 text-slate-700">
+                              <div className="flex items-start gap-2.5">
+                                <AlertCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                  <div className="font-bold text-slate-900">Quy trình thanh toán tiền mặt tại sân:</div>
+                                  <p className="text-[11px] leading-relaxed text-slate-600">
+                                    • Quý khách thanh toán <strong>{totalPrice.toLocaleString('vi-VN')} đ</strong> trực tiếp cho Chủ sân khi đến nhận sân.
+                                  </p>
+                                  <p className="text-[11px] leading-relaxed text-slate-600">
+                                    • Khung giờ của bạn sẽ được giữ chỗ ngay sau khi xác nhận.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            disabled={isSubmitting || isCashExceeded}
+                            onClick={() => handleConfirmBooking('TIEN_MAT')}
+                            className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-sm rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            {isSubmitting ? 'ĐANG XỬ LÝ...' : isCashExceeded ? 'Vượt Quá Giới Hạn 2 Giờ Tiền Mặt' : 'Xác Nhận Đặt Sân (Trả Tiền Mặt)'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

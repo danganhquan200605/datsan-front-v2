@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, MapPin, Bell, LogIn, Shield, User, LogOut, PlusCircle, Building2, Clock,
   Calendar, AlertTriangle, DollarSign, CheckCircle2, X
@@ -22,6 +22,17 @@ export default function Header({
   const notifRef = useRef(null);
   const knownNotifIds = useRef(new Set());
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleAdminNavigation = () => {
+    if (userRole !== 'ADMIN') return;
+    if (location.pathname === '/admin') {
+      navigate('/admin', { replace: true, state: { refreshKey: Date.now() } });
+      window.dispatchEvent(new CustomEvent('admin:refresh-data', { detail: { resetTab: true } }));
+    } else {
+      navigate('/admin');
+    }
+  };
 
   // Đồng bộ phiên khi có sự kiện thay đổi xác thực
   useEffect(() => {
@@ -195,14 +206,6 @@ export default function Header({
               </div>
             </Link>
 
-            {/* NHÃN STAGING / DEMO TRÊN LOCALHOST */}
-            {isLocalhost && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-[11px] font-black tracking-wide shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span>STAGING / DEMO</span>
-              </div>
-            )}
-
             <div className="relative hidden sm:block">
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-semibold text-slate-700">
                 <MapPin className="w-3.5 h-3.5 text-emerald-600" />
@@ -253,7 +256,7 @@ export default function Header({
                   <button 
                     onClick={() => {
                       if (userRole === 'ADMIN') {
-                        navigate('/admin');
+                        handleAdminNavigation();
                       } else {
                         navigate('/owner');
                       }
@@ -396,7 +399,7 @@ export default function Header({
 
                       {userRole === 'ADMIN' && (
                         <button 
-                        onClick={() => { setShowDropdown(false); navigate('/admin'); }}
+                          onClick={() => { setShowDropdown(false); handleAdminNavigation(); }}
                           className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-semibold transition"
                         >
                           <Shield className="w-4 h-4 text-rose-500" /> Trang quản trị Admin

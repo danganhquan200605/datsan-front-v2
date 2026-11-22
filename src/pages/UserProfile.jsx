@@ -11,6 +11,7 @@ import {
   broadcastAuthChange, 
   checkCustomerCancellation, 
   cancelCustomerBooking, 
+  cancelPartialCustomerBooking,
   confirmCustomerRefundReceived,
   fetchCustomerRefunds 
 } from '../supabaseClient';
@@ -68,13 +69,23 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
   const [cancelCheckResult, setCancelCheckResult] = useState(null);
   const [cancelReason, setCancelReason] = useState('Bận việc đột xuất');
   const [refundBank, setRefundBank] = useState({
-    nganhang: 'Ngân Hàng Mô Phỏng DatSan (DEMO)',
-    sotaikhoan: 'DEMO-888888',
-    tentaikhoan: 'KHACH HANG (DEMO)'
+    nganhang: 'Vietcombank',
+    sotaikhoan: '001100888888',
+    tentaikhoan: ''
   });
   const [isCheckingCancel, setIsCheckingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
+
+  // 6. Partial Cancellation States (TASK 02)
+  const [showPartialModal, setShowPartialModal] = useState(false);
+  const [selectedBookingForPartial, setSelectedBookingForPartial] = useState(null);
+  const [partialCheckResult, setPartialCheckResult] = useState(null);
+  const [selectedSlotIdsToCancel, setSelectedSlotIdsToCancel] = useState([]);
+  const [isCheckingPartial, setIsCheckingPartial] = useState(false);
+  const [isSubmittingPartial, setIsSubmittingPartial] = useState(false);
+  const [partialCancelError, setPartialCancelError] = useState('');
+  const [partialReason, setPartialReason] = useState('Thay đổi kế hoạch thi đấu');
 
   // Tải danh sách đơn đặt sân từ Supabase
   const fetchUserBookings = async () => {
@@ -177,9 +188,9 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
     setCancelError('');
     try {
       const isOnline = cancelCheckResult?.isOnlinePaid;
-      const effectiveAccount = refundBank.sotaikhoan?.trim() || 'DEMO-888888';
-      const effectiveHolder = refundBank.tentaikhoan?.trim() || user?.hoten || 'KHACH HANG (DEMO)';
-      const effectiveBank = refundBank.nganhang || 'Ngân Hàng Mô Phỏng DatSan (DEMO)';
+      const effectiveAccount = refundBank.sotaikhoan?.trim() || '001100888888';
+      const effectiveHolder = refundBank.tentaikhoan?.trim() || user?.hoten || 'KHACH HANG';
+      const effectiveBank = refundBank.nganhang || 'Vietcombank';
 
       const res = await cancelCustomerBooking({
         bookingId: selectedBookingForCancel.madatsan,
@@ -200,6 +211,70 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
       setCancelError(err?.message || 'Lỗi khi hủy đặt sân');
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  // Mở Modal Điều chỉnh hủy một phần khung giờ
+  const handleOpenPartialModal = async (booking) => {
+    setSelectedBookingForPartial(booking);
+    setShowPartialModal(true);
+    setIsCheckingPartial(true);
+    setSelectedSlotIdsToCancel([]);
+    setPartialCancelError('');
+    setPartialCheckResult(null);
+    try {
+      const res = await checkCustomerCancellation(booking.madatsan);
+      setPartialCheckResult(res);
+      if (res?.isOnlinePaid) {
+        setRefundBank(prev => ({
+          ...prev,
+          tentaikhoan: user?.HoTen || user?.hoten || prev.tentaikhoan || 'KHACH HANG'
+        }));
+      }
+    } catch (err) {
+      setPartialCancelError(err?.message || 'Lỗi kiểm tra điều kiện hủy khung giờ');
+    } finally {
+      setIsCheckingPartial(false);
+    }
+  };
+
+  const handleToggleSlotSelection = (slotId) => {
+    setSelectedSlotIdsToCancel(prev => 
+      prev.includes(slotId) ? prev.filter(id => id !== slotId) : [...prev, slotId]
+    );
+  };
+
+  // Thực hiện Hủy một phần khung giờ
+  const handleExecutePartialCancel = async () => {
+    if (!selectedBookingForPartial || selectedSlotIdsToCancel.length === 0) return;
+    setIsSubmittingPartial(true);
+    setPartialCancelError('');
+    try {
+      const isOnline = partialCheckResult?.isOnlinePaid;
+      const effectiveAccount = refundBank.sotaikhoan?.trim() || '001100888888';
+      const effectiveHolder = refundBank.tentaikhoan?.trim() || user?.hoten || 'KHACH HANG';
+      const effectiveBank = refundBank.nganhang || 'Vietcombank';
+
+      const res = await cancelPartialCustomerBooking({
+        bookingId: selectedBookingForPartial.madatsan,
+        slotIds: selectedSlotIdsToCancel,
+        reason: partialReason,
+        bankName: isOnline ? effectiveBank : undefined,
+        bankAccount: isOnline ? effectiveAccount : undefined,
+        accountHolder: isOnline ? effectiveHolder : undefined
+      });
+
+      if (res?.success) {
+        alert(res?.message || '✅ Đã điều chỉnh hủy khung giờ thành công!');
+        setShowPartialModal(false);
+        fetchUserBookings();
+      } else {
+        throw new Error(res?.message || res?.reason || 'Lỗi xử lý điều chỉnh khung giờ');
+      }
+    } catch (err) {
+      setPartialCancelError(err?.message || 'Lỗi khi điều chỉnh khung giờ');
+    } finally {
+      setIsSubmittingPartial(false);
     }
   };
 
@@ -613,14 +688,22 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                               )
                             )}
 
-                            {/* Nút Hủy Đặt Sân (FEATURE 02: Tự hủy trước >= 4h) */}
+                            {/* Nút Điều Chỉnh Khung Giờ & Hủy Đặt Sân (FEATURE 02: Tự hủy trước >= 4h) */}
                             {['CHO_THI_DAU', 'CHOXACNHAN', 'DA_THANH_TOAN'].includes(item.trangthai) && (
-                              <button
-                                onClick={() => handleOpenCancelModal(item)}
-                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs rounded-xl shadow-sm transition flex items-center gap-1"
-                              >
-                                <XCircle className="w-3.5 h-3.5" /> Hủy Đặt Sân
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleOpenPartialModal(item)}
+                                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold text-xs rounded-xl shadow-sm transition flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Clock className="w-3.5 h-3.5" /> Điều Chỉnh Khung Giờ
+                                </button>
+                                <button
+                                  onClick={() => handleOpenCancelModal(item)}
+                                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs rounded-xl shadow-sm transition flex items-center gap-1 cursor-pointer"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" /> Hủy Toàn Bộ Đơn
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -792,10 +875,10 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                     {cancelCheckResult.isOnlinePaid ? (
                       <>
                         <p className="text-[11px] font-bold text-emerald-950 mt-1">
-                          💰 Số tiền hoàn trả 100%: <span className="text-sm font-black text-emerald-600">{Number(cancelCheckResult.refundAmount).toLocaleString('vi-VN')} đ</span>. Chủ sân sẽ chuyển khoản mô phỏng vào tài khoản của bạn.
+                          💰 Số tiền hoàn trả 100%: <span className="text-sm font-black text-emerald-600">{Number(cancelCheckResult.refundAmount).toLocaleString('vi-VN')} đ</span>. Chủ sân sẽ chuyển hoàn theo thông tin tài khoản ngân hàng của bạn.
                         </p>
-                        <div className="text-[10px] text-amber-800 bg-amber-50/90 p-2 rounded-lg border border-amber-200 font-medium mt-1">
-                          ⚡ <strong>Chế độ Demo (Simulation):</strong> Tiền hoàn là số dư mô phỏng trong hệ thống thử nghiệm, không chuyển hay nhận tiền ngân hàng thật.
+                        <div className="text-[10px] text-slate-600 bg-slate-100 p-2 rounded-lg border border-slate-200 font-medium mt-1">
+                          ℹ️ Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.
                         </div>
                       </>
                     ) : (
@@ -819,38 +902,39 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                   </div>
                 )}
 
-                {/* Form tài khoản nhận hoàn tiền nếu đã thanh toán Online (DEMO) */}
+                {/* Form tài khoản nhận hoàn tiền nếu đã thanh toán Online */}
                 {cancelCheckResult.eligible && cancelCheckResult.isOnlinePaid && (
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                     <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase">
                       <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Tài khoản nhận hoàn tiền mô phỏng (DEMO)</span>
+                      <span>Thông tin tài khoản nhận hoàn tiền</span>
                     </div>
 
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800">
-                      <strong>⚡ LƯU Ý DEMO:</strong> Không cung cấp số tài khoản ngân hàng thật. Hệ thống đã tự động điền tài khoản giả lập để hoàn tất quy trình đối soát mô phỏng 100%.
+                    <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-700">
+                      ℹ️ Giao dịch thử nghiệm – không phát sinh chuyển tiền thật. Vui lòng chọn ngân hàng và số tài khoản để nhận chuyển khoản hoàn tất đối soát.
                     </div>
 
                     <div className="grid grid-cols-1 gap-2.5 text-xs">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Ngân hàng mô phỏng</label>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Ngân hàng thụ hưởng</label>
                         <select
                           value={refundBank.nganhang}
                           onChange={(e) => setRefundBank({ ...refundBank, nganhang: e.target.value })}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
                         >
-                          <option value="Ngân Hàng Mô Phỏng DatSan (DEMO)">Ngân Hàng Mô Phỏng DatSan (DEMO - Khuyên dùng)</option>
-                          <option value="MB Bank (Mô phỏng)">MB Bank (Mô phỏng)</option>
-                          <option value="Vietcombank (Mô phỏng)">Vietcombank (Mô phỏng)</option>
-                          <option value="Techcombank (Mô phỏng)">Techcombank (Mô phỏng)</option>
+                          <option value="Vietcombank">Vietcombank</option>
+                          <option value="MB Bank">MB Bank</option>
+                          <option value="Techcombank">Techcombank</option>
+                          <option value="BIDV">BIDV</option>
+                          <option value="VietinBank">VietinBank</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Số tài khoản mô phỏng</label>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Số tài khoản nhận hoàn tiền</label>
                         <input
                           type="text"
-                          placeholder="DEMO-888888"
+                          placeholder="001100888888"
                           value={refundBank.sotaikhoan}
                           onChange={(e) => setRefundBank({ ...refundBank, sotaikhoan: e.target.value })}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
@@ -858,10 +942,10 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Tên người thụ hưởng (Mô phỏng)</label>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Tên chủ tài khoản</label>
                         <input
                           type="text"
-                          placeholder="KHACH HANG (DEMO)"
+                          placeholder="NGUYEN VAN A"
                           value={refundBank.tentaikhoan}
                           onChange={(e) => setRefundBank({ ...refundBank, tentaikhoan: e.target.value.toUpperCase() })}
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
@@ -899,7 +983,7 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                   <button 
                     type="button" 
                     onClick={() => setShowCancelModal(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
                   >
                     Đóng
                   </button>
@@ -908,11 +992,243 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                       type="button"
                       disabled={isCancelling}
                       onClick={handleExecuteCancel}
-                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1"
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1 cursor-pointer"
                     >
                       {isCancelling ? 'Đang hủy...' : 'Xác Nhận Hủy Sân'}
                     </button>
                   )}
+                </div>
+              </div>
+            ) : null}
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ĐIỀU CHỈNH KHUNG GIỜ (TASK 02: PARTIAL CANCELLATION) */}
+      {showPartialModal && selectedBookingForPartial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <button 
+              onClick={() => setShowPartialModal(false)}
+              className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition cursor-pointer"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-4">
+              <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                Điều Chỉnh Khung Giờ
+              </span>
+              <h3 className="text-lg font-black text-slate-900 mt-2">
+                Hủy Một Phần Khung Giờ Đặt Sân
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Đơn #{selectedBookingForPartial.madatsan} • {selectedBookingForPartial.san?.tensan} • Ngày {selectedBookingForPartial.ngaysudung}
+              </p>
+            </div>
+
+            {isCheckingPartial ? (
+              <div className="py-8 text-center text-xs font-bold text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                Đang tải danh sách khung giờ và kiểm tra điều kiện hủy...
+              </div>
+            ) : partialCheckResult ? (
+              <div className="space-y-4">
+                {/* Hướng dẫn quy tắc 4 tiếng */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700">
+                  <p className="font-bold text-slate-900 mb-1">Chính sách hủy từng phần:</p>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    • Bạn có thể chọn hủy 1 hoặc nhiều khung giờ trong đơn. Khung giờ được hủy phải trước giờ thi đấu tối thiểu 4 tiếng.
+                  </p>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    • Các khung giờ không chọn hủy vẫn được giữ nguyên để bạn thi đấu.
+                  </p>
+                </div>
+
+                {/* Danh sách các khung giờ trong đơn */}
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-slate-700 flex justify-between items-center">
+                    <span>Chọn khung giờ bạn muốn hủy:</span>
+                    <span className="text-[11px] text-slate-500">Đã chọn: {selectedSlotIdsToCancel.length}/{partialCheckResult.slots?.length || 0}</span>
+                  </div>
+
+                  {partialCheckResult.slots && partialCheckResult.slots.length > 0 ? (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {partialCheckResult.slots.map((slot) => {
+                        const isSelected = selectedSlotIdsToCancel.includes(slot.makhunggio);
+                        return (
+                          <div
+                            key={slot.makhunggio}
+                            onClick={() => slot.canCancel && handleToggleSlotSelection(slot.makhunggio)}
+                            className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                              !slot.canCancel
+                                ? 'bg-slate-50/80 border-slate-200 opacity-60 cursor-not-allowed'
+                                : isSelected
+                                ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20 cursor-pointer'
+                                : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={!slot.canCancel}
+                                onChange={() => {}}
+                                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
+                              />
+                              <div>
+                                <div className="text-xs font-black text-slate-900">
+                                  {slot.giobatdau} - {slot.gioketthuc}
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  {slot.canCancel ? (
+                                    <span className="text-emerald-700 font-bold">Hợp lệ hủy (còn {slot.hoursRemaining}h)</span>
+                                  ) : (
+                                    <span className="text-rose-600 font-bold">Không thể hủy (còn {slot.hoursRemaining}h &lt; 4h)</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs font-black text-slate-900">
+                                {Number(slot.giadat || 0).toLocaleString('vi-VN')} đ
+                              </div>
+                              <span className="text-[10px] text-slate-400">Giá đặt</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-50 text-center text-xs text-slate-500 rounded-xl">
+                      Không tìm thấy khung giờ nào khả dụng trong đơn.
+                    </div>
+                  )}
+                </div>
+
+                {/* Tóm tắt tính toán động */}
+                {selectedSlotIdsToCancel.length > 0 && (() => {
+                  const selectedSlots = (partialCheckResult.slots || []).filter(s => selectedSlotIdsToCancel.includes(s.makhunggio));
+                  const refundEst = selectedSlots.reduce((sum, s) => sum + Number(s.giadat || 0), 0);
+                  const currentTotal = Number(selectedBookingForPartial.tongtien || 0);
+                  const newTotalEst = Math.max(0, currentTotal - refundEst);
+                  const isOnline = partialCheckResult.isOnlinePaid;
+                  const isAll = selectedSlotIdsToCancel.length >= (partialCheckResult.slots?.length || 0);
+
+                  return (
+                    <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-2xl text-xs space-y-2">
+                      <div className="font-extrabold text-amber-950 flex items-center justify-between">
+                        <span>Tạm tính điều chỉnh ({selectedSlotIdsToCancel.length} khung giờ):</span>
+                        {isAll && (
+                          <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-full">
+                            Hủy toàn bộ đơn
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex justify-between text-slate-700 text-[11px]">
+                        <span>Số tiền {isOnline ? 'hoàn lại (100%)' : 'giảm trừ tại sân'}:</span>
+                        <strong className="text-rose-600 text-xs">-{refundEst.toLocaleString('vi-VN')} đ</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-900 text-xs pt-1.5 border-t border-amber-200/60 font-bold">
+                        <span>Tổng tiền còn lại sau điều chỉnh:</span>
+                        <strong className="text-emerald-700 text-sm">{newTotalEst.toLocaleString('vi-VN')} đ</strong>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Form tài khoản nhận hoàn tiền nếu đã thanh toán Online */}
+                {partialCheckResult.isOnlinePaid && selectedSlotIdsToCancel.length > 0 && (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase">
+                      <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Thông tin tài khoản nhận hoàn tiền</span>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-700">
+                      ℹ️ Giao dịch thử nghiệm – không phát sinh chuyển tiền thật. Chủ sân sẽ đối soát và thực hiện hoàn tiền theo tài khoản này.
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2.5 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Ngân hàng thụ hưởng</label>
+                        <select
+                          value={refundBank.nganhang}
+                          onChange={(e) => setRefundBank({ ...refundBank, nganhang: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="Vietcombank">Vietcombank</option>
+                          <option value="MB Bank">MB Bank</option>
+                          <option value="Techcombank">Techcombank</option>
+                          <option value="BIDV">BIDV</option>
+                          <option value="VietinBank">VietinBank</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Số tài khoản nhận hoàn tiền</label>
+                        <input
+                          type="text"
+                          placeholder="001100888888"
+                          value={refundBank.sotaikhoan}
+                          onChange={(e) => setRefundBank({ ...refundBank, sotaikhoan: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Tên chủ tài khoản</label>
+                        <input
+                          type="text"
+                          placeholder="NGUYEN VAN A"
+                          value={refundBank.tentaikhoan}
+                          onChange={(e) => setRefundBank({ ...refundBank, tentaikhoan: e.target.value.toUpperCase() })}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lý do điều chỉnh */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Lý do điều chỉnh khung giờ</label>
+                  <select
+                    value={partialReason}
+                    onChange={(e) => setPartialReason(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="Thay đổi kế hoạch thi đấu">Thay đổi kế hoạch thi đấu</option>
+                    <option value="Giảm thời gian thi đấu">Giảm thời gian thi đấu</option>
+                    <option value="Thiếu người tham gia khung giờ này">Thiếu người tham gia khung giờ này</option>
+                    <option value="Đặt nhầm khung giờ">Đặt nhầm khung giờ</option>
+                    <option value="Khác">Lý do khác</option>
+                  </select>
+                </div>
+
+                {partialCancelError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold">
+                    ⚠️ {partialCancelError}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowPartialModal(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                  <button 
+                    type="button"
+                    disabled={selectedSlotIdsToCancel.length === 0 || isSubmittingPartial}
+                    onClick={handleExecutePartialCancel}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    {isSubmittingPartial ? 'Đang xử lý...' : `Xác Nhận Hủy (${selectedSlotIdsToCancel.length} ca)`}
+                  </button>
                 </div>
               </div>
             ) : null}

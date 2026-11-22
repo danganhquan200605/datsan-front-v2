@@ -490,18 +490,15 @@ export default function OwnerDashboard({ user, setUser }) {
           </div>
         </div>
 
-        {/* DEMO FINANCIAL MODE BANNER */}
-        <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 p-4 rounded-r-2xl flex items-center justify-between gap-4">
+        {/* THÔNG BÁO VẬN HÀNH THỬ NGHIỆM */}
+        <div className="mb-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="p-2 bg-amber-500 text-white rounded-xl shadow-sm text-xs font-black">DEMO</span>
+            <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-sm text-xs font-bold">Lưu ý</span>
             <div>
-              <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">Hệ Thống Mô Phỏng Tài Chính (Demo Financial Mode)</h4>
-              <p className="text-[11px] text-amber-800 font-medium">Toàn bộ ký quỹ, hoàn tiền và hoa hồng trên sàn là giả lập phục vụ thử nghiệm. Tuyệt đối không sử dụng tiền thật.</p>
+              <h4 className="text-xs font-bold text-slate-800">Cổng Quản Lý Vận Hành & Ký Quỹ</h4>
+              <p className="text-[11px] text-slate-600 font-medium">Hệ thống đang hoạt động trong môi trường thử nghiệm – các giao dịch tài chính không phát sinh chuyển tiền thật.</p>
             </div>
           </div>
-          <span className="hidden sm:inline-flex px-2.5 py-1 bg-amber-100 text-amber-900 text-[10px] font-bold rounded-full">
-            FINANCIAL_MODE=DEMO
-          </span>
         </div>
 
         {/* THỐNG KÊ KPI CARDS */}
@@ -579,7 +576,7 @@ export default function OwnerDashboard({ user, setUser }) {
                 {depositData?.trangthai === 'HOP_LE'
                   ? `Số dư quỹ bảo đảm hiện tại: ${Number(depositData.sodu_hientai || 1000000).toLocaleString('vi-VN')} đ. Khoản bảo đảm có hoàn lại khi ngừng kinh doanh.`
                   : depositData?.trangthai === 'CHO_XAC_MINH'
-                  ? 'Bạn đã gửi thông tin ký quỹ mô phỏng DEMO. Admin đang đối soát giao dịch để kích hoạt.'
+                  ? 'Bạn đã gửi thông tin nộp ký quỹ. Admin đang đối soát giao dịch để kích hoạt.'
                   : 'Quy định sàn: Chủ sân cần nộp khoản bảo đảm 1.000.000đ có hoàn lại để sân mới được nhận đặt lịch và phê duyệt hoạt động.'
                 }
               </p>
@@ -590,7 +587,7 @@ export default function OwnerDashboard({ user, setUser }) {
               onClick={handleStartDepositPayment}
               className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
             >
-              <QrCode className="w-4 h-4" /> Nộp bảo đảm 1.000.000đ (Mô phỏng DEMO)
+              <QrCode className="w-4 h-4" /> Nộp khoản bảo đảm 1.000.000đ
             </button>
           )}
         </div>
@@ -622,7 +619,7 @@ export default function OwnerDashboard({ user, setUser }) {
               style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}
               className="px-5 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
             >
-              <QrCode className="w-4 h-4" /> Nộp hoa hồng mô phỏng (DEMO)
+              <QrCode className="w-4 h-4" /> Quyết toán hoa hồng nền tảng
             </button>
           </div>
         )}
@@ -880,7 +877,7 @@ export default function OwnerDashboard({ user, setUser }) {
                                 ) : (
                                   <div>
                                     <span className="font-bold text-emerald-700 flex items-center gap-1">
-                                      <QrCode className="w-3.5 h-3.5" /> Chuyển khoản mô phỏng (DEMO)
+                                      <QrCode className="w-3.5 h-3.5" /> Chuyển khoản QR
                                     </span>
                                     <div className="text-[10px] text-emerald-600 mt-0.5">
                                       Đã đối soát tự động
@@ -1167,7 +1164,7 @@ export default function OwnerDashboard({ user, setUser }) {
 
         </div>
 
-        {/* MODAL NỘP HOA HỒNG CHO ADMIN MÔ PHỎNG (DEMO) */}
+        {/* MODAL NỘP HOA HỒNG CHO SÀN */}
         {showSettleModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100">
@@ -1180,28 +1177,31 @@ export default function OwnerDashboard({ user, setUser }) {
 
               <div className="text-center mb-4">
                 <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                  Sổ Nợ Hoa Hồng Admin
+                  Quyết Toán Doanh Thu Sàn
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-2">Nộp Hoa Hồng 10% Cho Sàn</h3>
+                <h3 className="text-lg font-black text-slate-900 mt-2">Nộp Hoa Hồng Nền Tảng (10%)</h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Thanh toán hoa hồng cho {pendingCommissionBookings.length} đơn tiền mặt đã thu
                 </p>
               </div>
 
               <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 text-center mb-5">
-                <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Nộp Hoa Hồng Mô Phỏng (DEMO 10%)</div>
+                <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Nộp Hoa Hồng Nền Tảng (10%)</div>
                 <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
                   <img 
                     src={getMockBookingQrSvg(totalPendingCommission, `HOAHONG-${ownerId}`)} 
-                    alt="Demo Mock QR Commission" 
+                    alt="QR Commission Payment" 
                     className="w-48 h-48 mx-auto object-contain"
                   />
                 </div>
                 <div className="mt-3 text-[11px] text-slate-600 space-y-0.5">
-                  <div>Ngân hàng: <strong className="text-slate-800">NGÂN HÀNG MÔ PHỎNG DATSAN</strong> | STK: <strong className="text-slate-800 font-mono">DEMO-88888888</strong></div>
-                  <div>Người nhận: <strong className="text-slate-800">DATSAN ONLINE QUẢN TRỊ (DEMO)</strong></div>
+                  <div>Ngân hàng: <strong className="text-slate-800">Vietcombank</strong> | STK: <strong className="text-slate-800 font-mono">0011008888888</strong></div>
+                  <div>Người nhận: <strong className="text-slate-800">DATSAN ONLINE QUAN TRI</strong></div>
                   <div className="text-base font-black text-rose-600 mt-2">
-                    Tổng tiền nộp mô phỏng: {totalPendingCommission.toLocaleString('vi-VN')} đ
+                    Tổng tiền nộp: {totalPendingCommission.toLocaleString('vi-VN')} đ
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1 italic">
+                    Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.
                   </div>
                 </div>
               </div>
@@ -1220,14 +1220,14 @@ export default function OwnerDashboard({ user, setUser }) {
                   className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  {isSettling ? 'Đang xử lý...' : 'Xác nhận quyết toán mô phỏng (DEMO)'}
+                  {isSettling ? 'Đang xử lý...' : 'Xác nhận quyết toán hoa hồng'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* FEATURE 01: MODAL NỘP KHOẢN BẢO ĐẢM KÝ QUỸ MÔ PHỎNG DEMO (1.000.000 VND) */}
+        {/* FEATURE 01: MODAL NỘP KHOẢN BẢO ĐẢM KÝ QUỸ (1.000.000 VND) */}
         {showDepositModal && depositPaymentReq && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -1240,67 +1240,57 @@ export default function OwnerDashboard({ user, setUser }) {
 
               <div className="text-center mb-3">
                 <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                  Bảo Đảm Trách Nhiệm Sân Bãi (Demo)
+                  Bảo Đảm Trách Nhiệm Sân Bãi
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-2">Nộp Ký Quỹ Mô Phỏng 1.000.000đ</h3>
+                <h3 className="text-lg font-black text-slate-900 mt-2">Nộp Ký Quỹ 1.000.000đ</h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Thu một lần cho mỗi tài khoản Owner. Khoản bảo đảm mô phỏng phục vụ thử nghiệm nền tảng.
+                  Thu một lần cho mỗi tài khoản Chủ sân. Khoản bảo đảm có hoàn lại khi ngừng kinh doanh.
                 </p>
               </div>
 
-              {/* DEMO BADGE */}
-              <div className="mb-3 p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-center">
-                <div className="text-xs font-black text-amber-900">⚡ GIAO DỊCH MÔ PHỎNG (FINANCIAL_MODE=DEMO)</div>
-                <div className="text-[10px] text-amber-700 font-medium">Toàn bộ tiền tệ là giả lập. Tuyệt đối không quét bằng ứng dụng ngân hàng thật.</div>
+              {/* THÔNG BÁO TÀI CHÍNH THỬ NGHIỆM */}
+              <div className="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                <div className="text-xs font-bold text-slate-800">Cổng Thanh Toán Ký Quỹ</div>
+                <div className="text-[10px] text-slate-600 font-medium">Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.</div>
               </div>
 
               <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 text-center mb-4">
-                <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Thanh Toán Giả Lập (Mock Gateway QR)</div>
+                <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Nộp Ký Quỹ Sàn</div>
                 <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
                   <img 
                     src={depositPaymentReq.bankInfo?.qrUrl || depositPaymentReq.qrUrl || getMockBookingQrSvg(1000000, depositPaymentReq.transferContent || 'KYQUY')} 
-                    alt="Mock QR Demo" 
+                    alt="QR Deposit" 
                     className="w-48 h-48 mx-auto object-contain"
                   />
                 </div>
                 <div className="mt-3 text-[11px] text-slate-600 space-y-1 text-left bg-white p-3 rounded-xl border border-slate-200">
-                  <div>Ngân hàng: <strong className="text-slate-800">{depositPaymentReq.bankInfo?.bankName || 'NGÂN HÀNG MÔ PHỎNG DATSAN'}</strong></div>
-                  <div>Số tài khoản: <strong className="text-slate-800 font-mono">{depositPaymentReq.bankInfo?.accountNumber || 'DEMO-88888888'}</strong></div>
-                  <div>Tên người nhận: <strong className="text-slate-800">{depositPaymentReq.bankInfo?.accountHolder || 'DATSANONLINE MÔ PHỎNG'}</strong></div>
-                  <div>Số tiền: <strong className="text-rose-600 font-black">1.000.000 đ (Mô phỏng)</strong></div>
+                  <div>Ngân hàng: <strong className="text-slate-800">{depositPaymentReq.bankInfo?.bankName || 'Vietcombank'}</strong></div>
+                  <div>Số tài khoản: <strong className="text-slate-800 font-mono">{depositPaymentReq.bankInfo?.accountNumber || '0011009999999'}</strong></div>
+                  <div>Tên người nhận: <strong className="text-slate-800">{depositPaymentReq.bankInfo?.accountHolder || 'DATSAN ONLINE KY QUY'}</strong></div>
+                  <div>Số tiền: <strong className="text-emerald-700 font-black">1.000.000 đ</strong></div>
                   <div className="pt-1 border-t border-slate-100">
                     Nội dung: <strong className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded">{depositPaymentReq.transferContent || depositPaymentReq.content}</strong>
                   </div>
                 </div>
               </div>
 
-              {/* MOCK PAYMENT GATEWAY BUTTONS */}
+              {/* PAYMENT CONTROLLER */}
               <div className="space-y-2 mb-4">
-                <div className="text-[11px] font-bold text-slate-700">Bộ Điều Khiển Mock Payment Gateway:</div>
                 <button
                   disabled={isSubmittingDepositProof}
                   onClick={() => handleSimulateDepositPayment('SIMULATE_SUCCESS')}
                   className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  {isSubmittingDepositProof ? 'Đang xử lý...' : '⚡ Thanh Toán Mô Phỏng (Demo Success - Duyệt Ngay)'}
+                  {isSubmittingDepositProof ? 'Đang xử lý...' : 'Xác nhận hoàn tất nộp ký quỹ'}
                 </button>
-                <div className="flex gap-2">
-                  <button
-                    disabled={isSubmittingDepositProof}
-                    onClick={() => handleSimulateDepositPayment('SIMULATE_FAILURE')}
-                    className="flex-1 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] transition cursor-pointer"
-                  >
-                    Thử Nghiệm Thất Bại
-                  </button>
-                  <button
-                    disabled={isSubmittingDepositProof}
-                    onClick={() => handleSimulateDepositPayment('SIMULATE_PENDING')}
-                    className="flex-1 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px] transition cursor-pointer"
-                  >
-                    Thử Nghiệm Chờ Duyệt
-                  </button>
-                </div>
+                <button
+                  disabled={isSubmittingDepositProof}
+                  onClick={() => handleSimulateDepositPayment('SIMULATE_PENDING')}
+                  className="w-full py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] transition cursor-pointer"
+                >
+                  Gửi yêu cầu chờ đối soát thủ công
+                </button>
               </div>
 
               <div className="flex gap-3">
@@ -1352,21 +1342,21 @@ export default function OwnerDashboard({ user, setUser }) {
 
               <div className="space-y-3 mb-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã giao dịch mô phỏng (DEMO Transaction ID)</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã giao dịch đối soát (Transaction ID)</label>
                   <input
                     type="text"
-                    placeholder="DEMO_REFUND_123456"
+                    placeholder="TXN_REFUND_123456"
                     value={refundTxIdInput}
                     onChange={(e) => setRefundTxIdInput(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Hệ thống tự động sinh mã giả lập nếu để trống</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Hệ thống tự động sinh mã đối soát nếu để trống</span>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Ghi chú đối soát mô phỏng (tùy chọn)</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Ghi chú đối soát (tùy chọn)</label>
                   <input
                     type="text"
-                    placeholder="Ghi chú hoàn tiền mô phỏng"
+                    placeholder="Ghi chú hoàn tiền"
                     value={refundProofUrlInput}
                     onChange={(e) => setRefundProofUrlInput(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-500"
@@ -1374,12 +1364,12 @@ export default function OwnerDashboard({ user, setUser }) {
                 </div>
               </div>
 
-              <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-900 flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 text-xs text-slate-700 flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-bold">Mô phỏng hoàn tiền (Demo Financial Mode)</div>
-                  <div className="text-[11px] text-amber-700 mt-0.5">
-                    Hệ thống đang chạy chế độ Demo. Bạn có thể nhấn <strong>Hoàn tiền mô phỏng</strong> để hệ thống tự động sinh mã giao dịch và ghi nhận hoàn tất ngay lập tức mà không cần chuyển khoản ngân hàng thật.
+                  <div className="font-bold text-slate-800">Xử lý hoàn tiền trực tuyến</div>
+                  <div className="text-[11px] text-slate-600 mt-0.5">
+                    Giao dịch thử nghiệm – không phát sinh chuyển tiền thật. Bạn có thể nhấn <strong>Xác nhận hoàn tiền</strong> để hệ thống tự động sinh mã đối soát và hoàn tất quy trình.
                   </div>
                 </div>
               </div>
@@ -1391,7 +1381,7 @@ export default function OwnerDashboard({ user, setUser }) {
                   className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  {isSubmittingRefundSent ? 'Đang xử lý mô phỏng...' : '⚡ Chuyển tiền hoàn mô phỏng (Demo Refund)'}
+                  {isSubmittingRefundSent ? 'Đang xử lý...' : 'Xác nhận hoàn tiền cho khách'}
                 </button>
 
                 <div className="flex gap-3 mt-1">

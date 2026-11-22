@@ -243,6 +243,13 @@ export async function cancelCustomerBooking(data) {
   });
 }
 
+export async function cancelPartialCustomerBooking(data) {
+  return apiRequest('/api/customer/cancel-partial-booking', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function fetchOwnerRefunds() {
   return apiRequest('/api/owner/refunds');
 }
@@ -459,6 +466,21 @@ export async function getMockPaymentConfig() {
   return apiRequest('/api/mock-payment/config');
 }
 
+export function calculateSlotsDurationMinutes(slots) {
+  if (!Array.isArray(slots) || slots.length === 0) return 0;
+  return slots.reduce((acc, slot) => {
+    const startStr = String(slot?.giobatdau || slot?.gio_bat_dau || '');
+    const endStr = String(slot?.gioketthuc || slot?.gio_ket_thuc || '');
+    const [sh, sm] = startStr.split(':').map(Number);
+    const [eh, em] = endStr.split(':').map(Number);
+    if (isNaN(sh) || isNaN(eh)) return acc + 60;
+    const startM = sh * 60 + (sm || 0);
+    let endM = eh * 60 + (em || 0);
+    if (endM < startM) endM += 24 * 60;
+    return acc + (endM - startM);
+  }, 0);
+}
+
 export function getMockBookingQrSvg(amount = 0, info = 'DATSAN') {
   const formattedAmount = (Number(amount || 0)).toLocaleString('vi-VN');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
@@ -473,12 +495,12 @@ export function getMockBookingQrSvg(amount = 0, info = 'DATSAN') {
     <rect x="35" y="210" width="55" height="55" fill="#0f172a" rx="6"/>
     <rect x="45" y="220" width="35" height="35" fill="#ffffff" rx="3"/>
     <rect x="52" y="227" width="21" height="21" fill="#0f172a"/>
-    <rect x="25" y="105" width="250" height="90" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5" rx="10"/>
-    <text x="150" y="132" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="#b91c1c" text-anchor="middle">⚡ MÔ PHỎNG THANH TOÁN ⚡</text>
-    <text x="150" y="153" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#7f1d1d" text-anchor="middle">KHÔNG QUÉT BẰNG APP NGÂN HÀNG THẬT</text>
-    <text x="150" y="174" font-family="system-ui, sans-serif" font-size="10" fill="#991b1b" text-anchor="middle">DEMO ONLY - ${info}</text>
-    <text x="150" y="245" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#0284c7" text-anchor="middle">DATSAN ONLINE SIMULATION</text>
-    <text x="150" y="265" font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">${formattedAmount} đ</text>
+    <rect x="25" y="105" width="250" height="85" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5" rx="10"/>
+    <text x="150" y="132" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="#15803d" text-anchor="middle">THANH TOÁN THỬ NGHIỆM</text>
+    <text x="150" y="153" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#166534" text-anchor="middle">Giao dịch thử nghiệm – không phát sinh tiền thật</text>
+    <text x="150" y="174" font-family="system-ui, sans-serif" font-size="10" fill="#475569" text-anchor="middle">Mã đơn: ${info}</text>
+    <text x="150" y="245" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#0284c7" text-anchor="middle">DATSAN ONLINE</text>
+    <text x="150" y="265" font-family="system-ui, sans-serif" font-size="11" font-weight="bold" fill="#0f172a" text-anchor="middle">${formattedAmount} đ</text>
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
