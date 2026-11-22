@@ -101,6 +101,7 @@ export default function OwnerDashboard({ user, setUser }) {
   // States dữ liệu
   const [sanList, setSanList] = useState([]);
   const [bookingList, setBookingList] = useState([]);
+  const [ratingSummary, setRatingSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const todayStr = getLocalDateValue();
   const quickDates = useMemo(() => getOwnerQuickDateList(todayStr), [todayStr]);
@@ -158,11 +159,11 @@ export default function OwnerDashboard({ user, setUser }) {
   };
 
   const userRole = (currentUser?.VaiTro || currentUser?.vaitro || '').toUpperCase();
-  const isOwnerOrAdmin = ['CHUSAN', 'ADMIN'].includes(userRole);
+  const isOwner = userRole === 'CHUSAN';
 
   // Fetch dữ liệu của riêng Chủ sân từ endpoint an toàn /api/owner/overview
   const fetchOwnerData = async () => {
-    if (!currentUser || !isOwnerOrAdmin) {
+    if (!currentUser || !isOwner) {
       setLoading(false);
       return;
     }
@@ -173,8 +174,10 @@ export default function OwnerDashboard({ user, setUser }) {
       const overview = res?.data || {};
       setSanList(overview.fields || []);
       setBookingList(overview.bookings || []);
+      setRatingSummary(overview.ratingSummary || { count: 0, average: null });
     } catch (err) {
       console.error('Lỗi tải dữ liệu Owner Dashboard:', err);
+      setRatingSummary(null);
     } finally {
       setLoading(false);
     }
@@ -182,7 +185,7 @@ export default function OwnerDashboard({ user, setUser }) {
 
   // Fetch thông tin ký quỹ của Chủ Sân (FEATURE 01)
   const fetchOwnerDepositData = async () => {
-    if (!currentUser || !isOwnerOrAdmin) return;
+    if (!currentUser || !isOwner) return;
     try {
       setLoadingDeposit(true);
       const res = await fetchOwnerDeposit();
@@ -196,7 +199,7 @@ export default function OwnerDashboard({ user, setUser }) {
 
   // Fetch danh sách hoàn tiền khách hủy (FEATURE 02)
   const fetchOwnerRefundsData = async () => {
-    if (!currentUser || !isOwnerOrAdmin) return;
+    if (!currentUser || !isOwner) return;
     try {
       setLoadingRefunds(true);
       const res = await fetchOwnerRefunds();
@@ -209,14 +212,14 @@ export default function OwnerDashboard({ user, setUser }) {
   };
 
   useEffect(() => {
-    if (currentUser && isOwnerOrAdmin) {
+    if (currentUser && isOwner) {
       fetchOwnerData();
       fetchOwnerDepositData();
       fetchOwnerRefundsData();
     } else {
       setLoading(false);
     }
-  }, [currentUser, isOwnerOrAdmin]);
+  }, [currentUser, isOwner]);
 
   // Bắt đầu quy trình nộp ký quỹ mô phỏng DEMO
   const handleStartDepositPayment = async () => {
@@ -436,8 +439,8 @@ export default function OwnerDashboard({ user, setUser }) {
     return matchStatus && matchDate && matchShift && matchSearch;
   });
 
-  // NẾU CHƯA ĐĂNG NHẬP HOẶC KHÔNG PHẢI CHỦ SÂN/ADMIN -> RENDER TRANG 404 TRUNG TÍNH (ZERO DATA LEAKED)
-  if (!currentUser || !isOwnerOrAdmin) {
+  // NẾU CHƯA ĐĂNG NHẬP HOẶC KHÔNG PHẢI CHỦ SÂN -> RENDER TRANG 404 TRUNG TÍNH (ZERO DATA LEAKED)
+  if (!currentUser || !isOwner) {
     return <NotFound user={currentUser} setUser={setUser} />;
   }
 
@@ -546,8 +549,16 @@ export default function OwnerDashboard({ user, setUser }) {
                 <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
               </div>
             </div>
-            <div className="text-2xl font-black text-slate-900">4.9 / 5.0</div>
-            <p className="text-[11px] text-purple-600 font-bold mt-1">Đánh giá từ khách hàng</p>
+            <div className="text-2xl font-black text-slate-900">
+              {ratingSummary === null ? '—' : ratingSummary.count > 0 && Number.isFinite(Number(ratingSummary.average))
+                ? `${Number(ratingSummary.average).toFixed(1)} / 5.0`
+                : 'Chưa có đánh giá'}
+            </div>
+            <p className="text-[11px] text-purple-600 font-bold mt-1">
+              {ratingSummary === null ? 'Không tải được dữ liệu đánh giá' : ratingSummary.count > 0
+                ? `${ratingSummary.count} lượt đánh giá từ khách hàng`
+                : 'Chưa nhận được đánh giá từ khách hàng'}
+            </p>
           </div>
 
         </div>
