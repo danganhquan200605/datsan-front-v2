@@ -6,7 +6,7 @@ import {
   Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X,
   QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow } from '../supabaseClient';
 import Header from '../components/Header';
 
 const DEFAULT_IMAGES = [
@@ -266,6 +266,11 @@ export default function Home({ user, setUser }) {
   });
 
   const handleQuickBook = (san, slot) => {
+    // TASK 01: Chặn chọn khung giờ trong quá khứ
+    if (isSlotInPast(selectedDate, slot.start)) {
+      alert(`Khung giờ ${slot.start} đã qua thời gian bắt đầu. Quý khách chỉ có thể đặt những khung giờ trong tương lai.`);
+      return;
+    }
     if (!currentUser) {
       setShowLoginModal(true);
       return;
@@ -341,9 +346,18 @@ export default function Home({ user, setUser }) {
 
   const confirmBookingToSupabase = async () => {
     if (!selectedSlotForBooking || !currentUser) return;
+    const { san, slot } = selectedSlotForBooking;
+
+    // TASK 01: Kiểm tra lại trước khi gửi yêu cầu đặt sân
+    if (isSlotInPast(selectedDate, slot.start)) {
+      alert(`Khung giờ ${slot.start} đã qua thời gian bắt đầu. Quý khách chỉ có thể đặt những khung giờ trong tương lai.`);
+      setBookingSuccessModal(false);
+      setSelectedSlotForBooking(null);
+      return;
+    }
+
     try {
       setIsSubmitting(true);
-      const { san, slot } = selectedSlotForBooking;
       const { data: bResult, error: bookingErr } = await supabase.createBooking({
         masan: san.MaSan,
         date: selectedDate,
@@ -353,12 +367,12 @@ export default function Home({ user, setUser }) {
       if (bookingErr) throw bookingErr;
 
       if (paymentMethod === 'TIEN_MAT') {
-        alert('✅ Đặt sân thành công! Quý khách thanh toán 100% tiền mặt tại sân cho Chủ sân. Hoa hồng sàn được ghi nợ tự động.');
+        alert('✅ Đặt sân thành công! Quý khách thanh toán tiền mặt trực tiếp cho Chủ sân khi đến sân thi đấu.');
         setBookingSuccessModal(false);
         fetchData();
         navigate('/profile');
       } else {
-        // QR mô phỏng: Chuyển sang bước mô phỏng thanh toán Mock Gateway
+        // QR trực tuyến: Chuyển sang bước xác nhận thanh toán
         const bookingId = bResult?.madatsan || bResult?.MaDatSan || (typeof bResult === 'number' ? bResult : null);
         setPendingBookingData({
           bookingId,
@@ -388,27 +402,27 @@ export default function Home({ user, setUser }) {
       if (action === 'SIMULATE_SUCCESS') {
         setBookingSuccessModal(false);
         setPendingBookingData(null);
-        alert('✅ Mô phỏng thanh toán trực tuyến THÀNH CÔNG 100%! Đơn đặt sân đã được xác nhận.');
+        alert('✅ Thanh toán thành công! Đơn đặt sân của bạn đã được xác nhận.');
         fetchData();
         navigate('/profile');
       } else if (action === 'SIMULATE_FAILURE') {
         if (fallback === 'SWITCH_CASH') {
           setBookingSuccessModal(false);
           setPendingBookingData(null);
-          alert('💵 Đã chuyển sang hình thức TIỀN MẶT TẠI SÂN. Khung giờ đặt sân của bạn được bảo toàn!');
+          alert('💵 Đã chuyển sang hình thức thanh toán tiền mặt tại sân. Khung giờ đặt sân của bạn được bảo toàn!');
           fetchData();
           navigate('/profile');
         } else if (fallback === 'CANCEL') {
           setBookingSuccessModal(false);
           setPendingBookingData(null);
-          alert('❌ Đã hủy đơn đặt sân và giải phóng khung giờ thi đấu.');
+          alert('❌ Đã hủy đơn đặt sân thành công. Khung giờ đã được giải phóng.');
           fetchData();
         } else {
           setSimulationFailed(true);
         }
       }
     } catch (err) {
-      alert('Lỗi mô phỏng thanh toán: ' + (err.message || 'Lỗi kết nối'));
+      alert('Lỗi xử lý giao dịch: ' + (err.message || 'Lỗi kết nối'));
     } finally {
       setIsSubmitting(false);
     }
@@ -619,10 +633,11 @@ export default function Home({ user, setUser }) {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-semibold">
               <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-600"></span> Còn Trống</span>
               <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-amber-500"></span> Giờ Vàng</span>
               <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-slate-200"></span> Đã Cọc</span>
+              <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-slate-200 border border-slate-300"></span> Đã Qua Giờ</span>
             </div>
           </div>
           {loading ? (
@@ -663,16 +678,21 @@ export default function Home({ user, setUser }) {
                         );
                         const slotId = vSlot ? Number(vSlot.makhunggio || vSlot.MaKhungGio) : null;
                         const status = slotId ? getSlotStatus(san.MaSan, slotId) : 'DADAT';
-                        const isAvailable = Boolean(slotId && status === 'TRONG');
+                        // TASK 01 (P0): Chặn đặt khung giờ trong quá khứ trên trang chủ
+                        const isPast = isSlotInPast(selectedDate, slot.start);
+                        const isAvailable = Boolean(slotId && status === 'TRONG' && !isPast);
                         let btnClass = 'bg-slate-100 text-slate-400 cursor-not-allowed';
                         let labelText = 'Đã cọc';
-                        const hourlyPriceK = Math.round(Number(san.GiaSan || 300000) / 1000);
-                        if (isAvailable) {
+                        if (isPast) {
+                          btnClass = 'bg-slate-100/90 text-slate-400 opacity-60 cursor-not-allowed select-none';
+                          labelText = 'Đã qua giờ';
+                        } else if (isAvailable) {
+                          const hourlyPriceK = Math.round(Number(san.GiaSan || 300000) / 1000);
                           if (slot.isGold) {
-                            btnClass = 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold shadow-sm';
+                            btnClass = 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold shadow-sm cursor-pointer';
                             labelText = `${hourlyPriceK}k • HOT`;
                           } else {
-                            btnClass = 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm';
+                            btnClass = 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm cursor-pointer';
                             labelText = `${hourlyPriceK}k • Đặt ngay`;
                           }
                         }
@@ -823,34 +843,29 @@ export default function Home({ user, setUser }) {
             </button>
 
             {pendingBookingData ? (
-              /* BƯỚC 2: CỔNG THANH TOÁN MÔ PHỎNG */
+              /* BƯỚC 2: CỔNG THANH TOÁN QR (TASK 04 & 05: GIAO DIỆN THƯƠNG MẠI CHUYÊN NGHIỆP) */
               <div>
                 <div className="text-center mb-4">
-                  <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                    Cổng Thanh Toán Mô Phỏng (DEMO)
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-800 text-[11px] font-bold rounded-full uppercase tracking-wider border border-emerald-200">
+                    Cổng Thanh Toán
                   </span>
-                  <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận Thanh Toán Mô Phỏng</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <h3 className="text-xl font-black text-slate-900 mt-2">Quét Mã QR Thanh Toán</h3>
+                  <p className="text-xs text-slate-500 mt-1">
                     Đơn đặt sân #{pendingBookingData.bookingId} • {pendingBookingData.sanName}
                   </p>
                 </div>
 
-                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 mb-4 text-center">
-                  <div className="text-xs font-bold text-amber-900">⚡ LƯU Ý DEMO: KHÔNG CHUYỂN TIỀN THẬT</div>
-                  <div className="text-[11px] text-amber-700 mt-0.5">
-                    Hệ thống giả lập thanh toán phục vụ học tập và giới thiệu sản phẩm.
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center mb-4">
+                  <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Thanh Toán</div>
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
+                    <img 
+                      src={getMockBookingQrSvg(pendingBookingData.total, `DON-${pendingBookingData.bookingId}`)} 
+                      alt="Payment QR" 
+                      className="w-40 h-40 mx-auto object-contain"
+                    />
                   </div>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-center mb-4">
-                  <div className="text-xs font-bold text-slate-700 mb-1.5">Mã QR Thanh Toán Giả Lập</div>
-                  <img 
-                    src={getMockBookingQrSvg(pendingBookingData.total, `DON-${pendingBookingData.bookingId}`)} 
-                    alt="Demo Mock QR" 
-                    className="w-40 h-40 mx-auto object-contain bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
-                  />
                   <div className="text-xs text-slate-600 mt-2">
-                    Tổng thanh toán mô phỏng: <strong className="text-rose-600 font-black text-base">{Number(pendingBookingData.total).toLocaleString('vi-VN')} đ</strong>
+                    Số tiền thanh toán: <strong className="text-slate-900 font-black text-lg">{Number(pendingBookingData.total).toLocaleString('vi-VN')} đ</strong>
                   </div>
                 </div>
 
@@ -859,50 +874,65 @@ export default function Home({ user, setUser }) {
                     <button
                       disabled={isSubmitting}
                       onClick={() => handleExecuteHomeSimulation('SIMULATE_SUCCESS')}
-                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                     >
                       <Check className="w-4 h-4" />
-                      {isSubmitting ? 'Đang xử lý...' : '🟢 Mô phỏng thanh toán THÀNH CÔNG (SIMULATE_SUCCESS)'}
+                      {isSubmitting ? 'Đang xử lý giao dịch...' : 'Xác Nhận & Hoàn Tất Thanh Toán'}
                     </button>
 
-                    <button
-                      disabled={isSubmitting}
-                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE')}
-                      className="w-full py-2.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      {isSubmitting ? 'Đang xử lý...' : '🔴 Mô phỏng thanh toán THẤT BÀI (SIMULATE_FAILURE)'}
-                    </button>
+                    <p className="text-[11px] text-slate-500 text-center italic mt-1.5 font-medium">
+                      Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.
+                    </p>
+
+                    {/* Tùy chọn kiểm thử dành cho tester/admin */}
+                    <details className="mt-3 pt-2 border-t border-slate-100 text-slate-400 text-center">
+                      <summary className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer select-none">
+                        🛠️ Tùy chọn kiểm thử (Dành cho Tester & Quản trị viên)
+                      </summary>
+                      <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-left">
+                        <p className="text-[10px] text-slate-500">Mô phỏng trường hợp thanh toán bị gián đoạn hoặc thất bại từ ngân hàng:</p>
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE')}
+                          className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          Thử nghiệm kịch bản thanh toán thất bại
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 ) : (
-                  <div className="space-y-2.5 bg-rose-50 border border-rose-200 rounded-2xl p-3.5">
+                  <div className="space-y-3 bg-rose-50/80 border border-rose-200 rounded-2xl p-4">
                     <div className="text-xs font-bold text-rose-800 text-center">
-                      ⚠️ Mô phỏng thất bại! Khung giờ đang được giữ tạm:
+                      ⚠️ Thanh toán chưa hoàn tất. Khung giờ của bạn đang được tạm giữ an toàn:
                     </div>
 
                     <button
                       disabled={isSubmitting}
                       onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'SWITCH_CASH')}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1 cursor-pointer"
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <DollarSign className="w-3.5 h-3.5" />
-                      💵 Chuyển sang Tiền mặt tại sân (Bảo toàn khung giờ)
+                      <DollarSign className="w-4 h-4" />
+                      Chuyển sang thanh toán tiền mặt tại sân
                     </button>
 
                     <button
                       disabled={isSubmitting}
                       onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'CANCEL')}
-                      className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <X className="w-3.5 h-3.5" />
-                      ❌ Hủy đơn đặt sân (Giải phóng khung giờ)
+                      <X className="w-4 h-4" />
+                      Hủy đơn đặt sân và giải phóng khung giờ
                     </button>
 
                     <button
                       disabled={isSubmitting}
                       onClick={() => setSimulationFailed(false)}
-                      className="w-full py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition"
+                      className="w-full py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
                     >
-                      🔄 Thử lại mô phỏng
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Thử thanh toán lại
                     </button>
                   </div>
                 )}
@@ -911,24 +941,25 @@ export default function Home({ user, setUser }) {
               /* BƯỚC 1: CHỌN HÌNH THỨC BAN ĐẦU */
               <div>
                 <div className="text-center mb-4">
-                  <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                    Thanh Toán Mô Phỏng 100% (DEMO)
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-800 text-[11px] font-bold rounded-full uppercase tracking-wider border border-emerald-200">
+                    Đặt Sân & Thanh Toán
                   </span>
-                  <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận & Đặt Sân</h3>
+                  <h3 className="text-xl font-black text-slate-900 mt-2">Xác Nhận Đặt Sân</h3>
+                  <p className="text-xs text-slate-500 mt-1">Kiểm tra thông tin ca đấu và chọn phương thức thanh toán</p>
                 </div>
 
                 <div className="bg-slate-50 rounded-2xl p-4 text-xs space-y-2.5 my-4 border border-slate-200">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Sân thi đấu:</span>
-                    <span className="font-bold text-slate-800">{selectedSlotForBooking.san.TenSan}</span>
+                    <span className="text-slate-600">Sân thi đấu:</span>
+                    <span className="font-bold text-slate-900">{selectedSlotForBooking.san.TenSan}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Khung giờ:</span>
-                    <span className="font-bold text-emerald-700">{selectedSlotForBooking.slot.start} - {selectedSlotForBooking.slot.end} ({selectedDate})</span>
+                    <span className="text-slate-600">Khung giờ:</span>
+                    <span className="font-bold text-slate-900">{selectedSlotForBooking.slot.start} - {selectedSlotForBooking.slot.end} ({selectedDate})</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200 items-baseline">
-                    <span className="text-slate-700 font-bold">Tổng thanh toán 100%:</span>
-                    <span className="font-black text-lg text-rose-600">
+                    <span className="text-slate-700 font-bold">Tổng thanh toán:</span>
+                    <span className="font-black text-xl text-slate-900">
                       {Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ
                     </span>
                   </div>
@@ -939,7 +970,7 @@ export default function Home({ user, setUser }) {
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('QR')}
-                    className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 ${
+                    className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 cursor-pointer ${
                       paymentMethod === 'QR'
                         ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
                         : 'border-slate-200 hover:border-slate-300 bg-white'
@@ -947,17 +978,17 @@ export default function Home({ user, setUser }) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-black text-xs text-slate-900 flex items-center gap-1">
-                        <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Quét mã mô phỏng (DEMO)
+                        <QrCode className="w-3.5 h-3.5 text-emerald-600" /> Thanh toán QR
                       </span>
                       {paymentMethod === 'QR' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
                     </div>
-                    <span className="text-[10px] text-slate-500">Thanh toán trực tuyến mô phỏng 100%</span>
+                    <span className="text-[10px] text-slate-500">Quét mã QR và xác nhận trực tuyến</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('TIEN_MAT')}
-                    className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 ${
+                    className={`p-3 rounded-2xl border text-left transition flex flex-col gap-1.5 cursor-pointer ${
                       paymentMethod === 'TIEN_MAT'
                         ? 'border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20'
                         : 'border-slate-200 hover:border-slate-300 bg-white'
@@ -969,23 +1000,20 @@ export default function Home({ user, setUser }) {
                       </span>
                       {paymentMethod === 'TIEN_MAT' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
                     </div>
-                    <span className="text-[10px] text-slate-500">Trả 100% tại sân cho chủ (Ghi nợ)</span>
+                    <span className="text-[10px] text-slate-500">Thanh toán trực tiếp tại sân</span>
                   </button>
                 </div>
 
                 {paymentMethod === 'QR' ? (
                   <div className="space-y-3 mb-4">
-                    <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-3 text-center">
-                      <div className="text-[11px] font-bold text-slate-700 mb-1">Mô phỏng thanh toán trực tuyến DEMO</div>
-                      <p className="text-[10px] text-slate-500">Hệ thống sẽ giữ khung giờ và mở cổng mô phỏng để bạn xác nhận.</p>
-                    </div>
+                    <p className="text-[11px] text-slate-500 text-center">Hệ thống sẽ giữ chỗ khung giờ và chuyển sang bước quét mã QR thanh toán.</p>
                   </div>
                 ) : (
                   <div className="space-y-3 mb-4">
-                    <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-3 text-xs text-slate-700">
-                      <p className="font-bold text-slate-900 mb-1">Thanh toán 100% tại sân:</p>
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-700">
+                      <p className="font-bold text-slate-900 mb-1">Thanh toán tiền mặt tại sân:</p>
                       <p className="text-[11px] text-slate-600">
-                        Bạn sẽ trả {Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ trực tiếp cho Chủ sân khi đến sân. Hệ thống ghi nợ hoa hồng 10% cho sàn.
+                        Quý khách sẽ thanh toán <strong>{Number(selectedSlotForBooking.gia).toLocaleString('vi-VN')} đ</strong> trực tiếp cho Chủ sân khi đến nhận sân.
                       </p>
                     </div>
                   </div>
@@ -993,17 +1021,19 @@ export default function Home({ user, setUser }) {
 
                 <div className="flex gap-3">
                   <button 
+                    type="button"
                     onClick={() => setBookingSuccessModal(false)}
-                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer"
                   >
                     Hủy
                   </button>
                   <button 
+                    type="button"
                     disabled={isSubmitting}
                     onClick={confirmBookingToSupabase}
-                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:opacity-50 transition"
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md disabled:opacity-50 transition cursor-pointer"
                   >
-                    {isSubmitting ? 'Đang lưu...' : paymentMethod === 'QR' ? 'Tiến hành đặt sân & Mô phỏng QR' : 'Xác nhận đặt sân (Tiền mặt)'}
+                    {isSubmitting ? 'Đang xử lý...' : paymentMethod === 'QR' ? 'Tiến Hành Đặt Sân & Thanh Toán QR' : 'Xác Nhận Đặt Sân (Trả Tiền Mặt)'}
                   </button>
                 </div>
               </div>

@@ -19,7 +19,8 @@ import {
   fetchOwnerRefunds,
   confirmOwnerRefundSent,
   processMockPayment,
-  getMockBookingQrSvg
+  getMockBookingQrSvg,
+  isMatchEnded
 } from '../supabaseClient';
 import Header from '../components/Header';
 import LoginModal from '../components/LoginModal';
@@ -333,8 +334,11 @@ export default function OwnerDashboard({ user, setUser }) {
     }
   };
 
-  // Cập nhật trạng thái đơn đặt sân thông thường
+  // Cập nhật trạng thái đơn đặt sân qua quy trình nghiệp vụ an toàn
   const handleUpdateBookingStatus = async (maDatSan, newStatus) => {
+    if (newStatus === 'HOAN_THANH') {
+      return handleSettleAction('COMPLETE_MATCH', maDatSan);
+    }
     try {
       const { error } = await supabase
         .from('datsan')
@@ -350,7 +354,7 @@ export default function OwnerDashboard({ user, setUser }) {
     }
   };
 
-  // Xử lý xác nhận thu tiền mặt / hủy trận / nộp hoa hồng
+  // Xử lý xác nhận thu tiền mặt / hoàn tất trận / hủy trận / nộp hoa hồng
   const handleSettleAction = async (action, bookingId = null) => {
     try {
       setIsSettling(true);
@@ -358,9 +362,15 @@ export default function OwnerDashboard({ user, setUser }) {
       if (res && res.error) throw new Error(res.error);
 
       if (action === 'CONFIRM_CASH') {
-        alert('✅ Đã xác nhận thu 100% tiền mặt & hoàn thành trận! Phí hoa hồng 10% đã được ghi vào Sổ Nợ.');
+        if (res?.matchHasEnded) {
+          alert('✅ Đã xác nhận thu tiền mặt và hoàn tất ca đấu! Phí hoa hồng 10% đã được ghi vào Sổ Nợ.');
+        } else {
+          alert('💵 Đã xác nhận thu tiền mặt tại sân! Đơn được chuyển sang Chờ thi đấu và sẽ tự động hoàn tất sau khi trận đấu kết thúc.');
+        }
+      } else if (action === 'COMPLETE_MATCH') {
+        alert('✅ Đã hoàn tất ca đấu thành công!');
       } else if (action === 'CANCEL_NO_SHOW') {
-        alert('✅ Đã hủy trận (khách bùng/hủy). Phí hoa hồng là 0 đ.');
+        alert('✅ Đã hủy trận (khách vắng mặt). Khung giờ đã được giải phóng và phí hoa hồng là 0 đ.');
       } else if (action === 'SETTLE_ALL_COMMISSIONS') {
         setShowSettleModal(false);
         setTimeout(() => {
@@ -915,25 +925,26 @@ export default function OwnerDashboard({ user, setUser }) {
                                     <button
                                       disabled={isSettling}
                                       onClick={() => handleSettleAction('CONFIRM_CASH', b.madatsan)}
-                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm"
+                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm cursor-pointer"
                                     >
-                                      ✓ Đã thu tiền mặt & Xong
+                                      ✓ Xác nhận thu tiền mặt
                                     </button>
                                     <button
                                       disabled={isSettling}
                                       onClick={() => handleSettleAction('CANCEL_NO_SHOW', b.madatsan)}
-                                      className="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 font-bold text-[11px] rounded-lg"
+                                      className="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 font-bold text-[11px] rounded-lg cursor-pointer"
                                     >
-                                      ✕ Bùng / Hủy
+                                      ✕ Hủy vắng mặt
                                     </button>
                                   </>
                                 )}
-                                {!isCash && !isCompleted && !isCancelled && (
+                                {!isCompleted && !isCancelled && (
                                   <button
-                                    onClick={() => handleUpdateBookingStatus(b.madatsan, 'HOAN_THANH')}
-                                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] rounded-lg shadow-sm"
+                                    disabled={isSettling}
+                                    onClick={() => handleSettleAction('COMPLETE_MATCH', b.madatsan)}
+                                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] rounded-lg shadow-sm cursor-pointer"
                                   >
-                                    Hoàn thành trận
+                                    Hoàn tất ca đấu
                                   </button>
                                 )}
                                 {isCompleted && isCash && meta.commissionStatus === 'CHO_CHUSAN_NOP' && (

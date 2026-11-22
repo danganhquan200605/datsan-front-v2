@@ -546,7 +546,22 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                     const sanInfo = item.san || {};
                     const viTriInfo = sanInfo.vitri || {};
                     const isEvaluated = evaluatedBookings.includes(item.madatsan);
-                    const isCompleted = item.trangthai === 'HOAN_THANH' || item.trangthai === 'HOANTHANH' || item.trangthai === 'DACANCOC' || item.trangthai === 'DA_THANH_TOAN';
+
+                    // TASK 03 (P0): Chỉ đơn HOÀN TẤT THI ĐẤU và đã QUA GIỜ KẾT THÚC mới đủ điều kiện đánh giá
+                    const slots = item.datsan_khunggio || [];
+                    let latestEnd = '00:00:00';
+                    for (const s of slots) {
+                      const end = s.khunggio?.gioketthuc || '00:00:00';
+                      if (end > latestEnd) latestEnd = end;
+                    }
+                    const isStatusCompleted = item.trangthai === 'HOAN_THANH' || item.trangthai === 'HOANTHANH';
+                    let matchHasEnded = false;
+                    if (latestEnd !== '00:00:00' && item.ngaysudung) {
+                      const endHourMin = latestEnd.slice(0, 5);
+                      const matchEndDateTime = new Date(`${item.ngaysudung}T${endHourMin}:00+07:00`);
+                      matchHasEnded = Date.now() >= matchEndDateTime.getTime();
+                    }
+                    const isEligibleForReview = isStatusCompleted && matchHasEnded;
 
                     return (
                       <div key={item.madatsan} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 hover:border-slate-300 transition">
@@ -579,8 +594,8 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                             <span className="font-black text-emerald-700">{Number(item.tongtien).toLocaleString('vi-VN')} đ</span>
                           </div>
                           <div className="col-span-2 sm:col-span-1 flex items-center justify-start sm:justify-end gap-2 flex-wrap">
-                            {/* Nút Viết đánh giá cho đơn hoàn thành */}
-                            {isCompleted && (
+                            {/* Nút Viết đánh giá cho đơn hoàn thành (TASK 03 P0: chỉ mở khi đã kết thúc trận và hoàn tất) */}
+                            {isEligibleForReview && (
                               isEvaluated ? (
                                 <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1">
                                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> Đã đánh giá

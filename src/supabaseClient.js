@@ -4,7 +4,7 @@ const isBrowserRemote = typeof window !== 'undefined' &&
   window.location.hostname !== 'localhost' &&
   window.location.hostname !== '127.0.0.1';
 
-let rawApiUrl = (import.meta.env.VITE_API_URL || '').trim();
+let rawApiUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL ? import.meta.env.VITE_API_URL : '').trim();
 if (isBrowserRemote) {
   // If running online (e.g. Vercel), route directly to live Render backend
   if (!rawApiUrl || rawApiUrl.includes('datsan-back-v2.vercel.app') || rawApiUrl.includes('localhost')) {
@@ -90,6 +90,40 @@ export async function requestPhoneOtp(phone) {
 
 export async function verifyPhoneOtp(phone, token) {
   return apiRequest('/api/auth/verify', { method: 'POST', body: JSON.stringify({ phone, token }) });
+}
+
+// TASK 01 & 02: Utility xử lý múi giờ Việt Nam (Asia/Ho_Chi_Minh, UTC+7)
+export function getVietnamNow() {
+  const now = new Date();
+  const formatterDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const formatterTime = new Intl.DateTimeFormat('en-GB', { 
+    timeZone: 'Asia/Ho_Chi_Minh', 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit', 
+    hour12: false 
+  });
+  const dateStr = formatterDate.format(now); // YYYY-MM-DD
+  const timeStr = formatterTime.format(now); // HH:mm:ss
+  return { dateStr, timeStr, now };
+}
+
+export function isSlotInPast(selectedDate, slotStartTime) {
+  if (!selectedDate || !slotStartTime) return false;
+  const { dateStr, timeStr } = getVietnamNow();
+  if (selectedDate < dateStr) return true;
+  if (selectedDate > dateStr) return false;
+  // selectedDate === dateStr
+  const start = String(slotStartTime).slice(0, 8);
+  const current = String(timeStr).slice(0, 8);
+  return start <= current;
+}
+
+export function isMatchEnded(ngaysudung, latestEnd) {
+  if (!ngaysudung || !latestEnd) return false;
+  const endHourMin = String(latestEnd).slice(0, 5);
+  const matchEndDateTime = new Date(`${ngaysudung}T${endHourMin}:00+07:00`);
+  return Date.now() >= matchEndDateTime.getTime();
 }
 
 export async function settleOwnerBooking(action, bookingId, ownerId) {
