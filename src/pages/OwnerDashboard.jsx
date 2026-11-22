@@ -539,12 +539,12 @@ export default function OwnerDashboard({ user, setUser }) {
               </div>
             </div>
             <div className="text-2xl font-black text-slate-900">
-              {ratingSummary === null ? '—' : ratingSummary.count > 0 && Number.isFinite(Number(ratingSummary.average))
+              {(!ratingSummary || ratingSummary.unavailable) ? '—' : ratingSummary.count > 0 && Number.isFinite(Number(ratingSummary.average))
                 ? `${Number(ratingSummary.average).toFixed(1)} / 5.0`
                 : 'Chưa có đánh giá'}
             </div>
             <p className="text-[11px] text-purple-600 font-bold mt-1">
-              {ratingSummary === null ? 'Không tải được dữ liệu đánh giá' : ratingSummary.count > 0
+              {(!ratingSummary || ratingSummary.unavailable) ? 'Không tải được dữ liệu đánh giá' : ratingSummary.count > 0
                 ? `${ratingSummary.count} lượt đánh giá từ khách hàng`
                 : 'Chưa nhận được đánh giá từ khách hàng'}
             </p>
