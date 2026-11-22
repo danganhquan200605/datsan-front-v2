@@ -493,17 +493,6 @@ export default function OwnerDashboard({ user, setUser }) {
           </div>
         </div>
 
-        {/* THÔNG BÁO VẬN HÀNH THỬ NGHIỆM */}
-        <div className="mb-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-sm text-xs font-bold">Lưu ý</span>
-            <div>
-              <h4 className="text-xs font-bold text-slate-800">Cổng Quản Lý Vận Hành & Ký Quỹ</h4>
-              <p className="text-[11px] text-slate-600 font-medium">Hệ thống đang hoạt động trong môi trường thử nghiệm – các giao dịch tài chính không phát sinh chuyển tiền thật.</p>
-            </div>
-          </div>
-        </div>
-
         {/* THỐNG KÊ KPI CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           
