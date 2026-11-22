@@ -433,9 +433,9 @@ export default function Header({
         <div className="border-t border-slate-100 bg-white">
           <div className="max-w-[1440px] mx-auto px-6 h-11 flex items-center justify-between text-xs font-semibold">
             <nav className="flex items-center space-x-8">
-              <Link to="/" className="text-emerald-600 border-b-2 border-emerald-600 py-3 font-bold">Trang Chủ</Link>
-              <a href="#matrix-section" className="text-slate-600 hover:text-emerald-600 py-3 transition">Lưới Khung Giờ Real-time</a>
-              <a href="#venues-section" className="text-slate-600 hover:text-emerald-600 py-3 transition">Danh Sách Cụm Sân</a>
+              <Link to="/" className={`py-3 transition ${location.pathname === '/' ? 'text-emerald-600 border-b-2 border-emerald-600 font-bold' : 'text-slate-600 hover:text-emerald-600'}`}>Trang Chủ</Link>
+              <a href="/#matrix-section" className="text-slate-600 hover:text-emerald-600 py-3 transition">Lưới Khung Giờ Real-time</a>
+              <a href="/#venues-section" className="text-slate-600 hover:text-emerald-600 py-3 transition">Danh Sách Cụm Sân</a>
             </nav>
             <div className="flex items-center gap-1.5 text-slate-600 font-medium">
               <Clock className="w-3.5 h-3.5 text-emerald-600" />
