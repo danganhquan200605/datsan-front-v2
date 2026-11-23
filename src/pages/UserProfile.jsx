@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   User, Phone, Mail, Shield, Calendar, Clock, MapPin, 
   Star, CheckCircle2, AlertCircle, XCircle, ChevronLeft, 
   Edit3, Save, MessageSquare, ExternalLink, Award, ArrowRight,
-  AlertTriangle, RefreshCw, DollarSign, CreditCard
+  AlertTriangle, RefreshCw, DollarSign, CreditCard, RotateCcw
 } from 'lucide-react';
 import { 
   supabase, 
@@ -50,9 +50,44 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
   const [isUpdatingUser, setIsUpdatingUser] = useState(false);
 
   // 3. Booking History & Reviews State
+  const [searchParams] = useSearchParams();
+  const [highlightedBookingId, setHighlightedBookingId] = useState(null);
   const [bookingList, setBookingList] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [activeTab, setActiveTab] = useState('ALL');
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    const bookingIdParam = searchParams.get('bookingId');
+
+    if (tabParam) {
+      const lower = tabParam.toLowerCase();
+      if (lower === 'cancelled' || lower === 'dahuy') {
+        setActiveTab('DAHUY');
+      } else if (lower === 'completed' || lower === 'hoanthanh') {
+        setActiveTab('HOANTHANH');
+      } else if (lower === 'pending' || lower === 'bookings') {
+        setActiveTab('PENDING');
+      } else if (lower === 'refunds') {
+        setActiveTab('DAHUY');
+      }
+    }
+
+    if (bookingIdParam) {
+      setHighlightedBookingId(Number(bookingIdParam));
+      const timer = setTimeout(() => setHighlightedBookingId(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (highlightedBookingId) {
+      const el = document.getElementById(`user-booking-${highlightedBookingId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [highlightedBookingId, bookingList]);
 
   // 4. Rating Modal State
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -639,18 +674,43 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                     const isEligibleForReview = isStatusCompleted && matchHasEnded;
 
                     return (
-                      <div key={item.madatsan} className="bg-slate-50/70 rounded-2xl border border-slate-200 p-4 hover:border-slate-300 transition">
+                      <div 
+                        key={item.madatsan} 
+                        id={`user-booking-${item.madatsan}`}
+                        className={`rounded-2xl border p-4 transition-all duration-500 ${
+                          highlightedBookingId === Number(item.madatsan)
+                            ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-400 shadow-md'
+                            : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden shrink-0">
+                            <div 
+                              onClick={() => {
+                                const fieldId = sanInfo.masan || sanInfo.MaSan || item.masan;
+                                if (fieldId) navigate(`/field/${fieldId}`);
+                              }}
+                              className="w-12 h-12 rounded-xl bg-slate-200 overflow-hidden shrink-0 cursor-pointer group"
+                              title="Bấm để xem chi tiết sân"
+                            >
                               <img 
                                 src={sanInfo.hinhanh || 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=800&q=80'} 
                                 alt={sanInfo.tensan}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
                               />
                             </div>
                             <div>
-                              <h4 className="font-extrabold text-sm text-slate-900">{sanInfo.tensan || 'Sân Thể Thao'}</h4>
+                              <h4 
+                                onClick={() => {
+                                  const fieldId = sanInfo.masan || sanInfo.MaSan || item.masan;
+                                  if (fieldId) navigate(`/field/${fieldId}`);
+                                }}
+                                className="font-extrabold text-sm text-slate-900 hover:text-emerald-700 cursor-pointer transition flex items-center gap-1"
+                                title="Bấm để xem chi tiết sân"
+                              >
+                                {sanInfo.tensan || 'Sân Thể Thao'}
+                                <ExternalLink className="w-3 h-3 text-slate-400" />
+                              </h4>
                               <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                                 <MapPin className="w-3 h-3 text-slate-400" /> {viTriInfo.diachi || 'Đà Nẵng'}, Q. {viTriInfo.quan || 'Hải Châu'}
                               </p>
@@ -669,6 +729,20 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                             <span className="font-black text-emerald-700">{Number(item.tongtien).toLocaleString('vi-VN')} đ</span>
                           </div>
                           <div className="col-span-2 sm:col-span-1 flex items-center justify-start sm:justify-end gap-2 flex-wrap">
+                            {/* Nút Đặt lại sân cho đơn đã hoàn thành hoặc đã hủy */}
+                            {(isStatusCompleted || item.trangthai === 'DA_HUY' || item.trangthai === 'DAHUY') && (
+                              <button
+                                onClick={() => {
+                                  const fieldId = sanInfo.masan || sanInfo.MaSan || item.masan;
+                                  if (fieldId) navigate(`/field/${fieldId}`);
+                                  else alert('Không tìm thấy thông tin sân để đặt lại.');
+                                }}
+                                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-xs rounded-xl shadow-sm transition flex items-center gap-1 cursor-pointer"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" /> Đặt Lại Sân
+                              </button>
+                            )}
+
                             {/* Nút Viết đánh giá cho đơn hoàn thành (TASK 03 P0: chỉ mở khi đã kết thúc trận và hoàn tất) */}
                             {isEligibleForReview && (
                               isEvaluated ? (

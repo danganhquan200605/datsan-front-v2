@@ -165,28 +165,73 @@ export default function Header({
     }
     setShowNotifications(false);
 
+    // Parse metadata if available
+    let meta = {};
+    try {
+      meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+    } catch {
+      meta = {};
+    }
+
+    // Fallback extract bookingId if not in meta
+    let bookingId = meta.bookingId || meta.madatsan;
+    if (!bookingId) {
+      const match = ((n.tieude || '') + ' ' + (n.noidung || '')).match(/#(\d+)/);
+      if (match) bookingId = match[1];
+    }
+    const refundId = meta.refundId || meta.mahoantien;
+    const date = meta.date || meta.ngaysudung;
+
     if (n.loaithongbao === 'NEW_FIELD') {
-      // Có hồ sơ sân mới chờ duyệt -> Admin đến thẳng mục duyệt sân
       navigate('/admin?tab=PENDING_FIELDS');
-    } else if (n.loaithongbao === 'BOOKING') {
-      // Có khách đặt sân mới -> Chủ sân đến bảng quản lý sân, Khách đến lịch sử đơn
+    } else if (n.loaithongbao === 'REFUND_REQUEST' || n.loaithongbao === 'REFUND') {
       if (userRole === 'CHUSAN') {
-        navigate('/owner');
+        const query = new URLSearchParams();
+        query.set('tab', 'refunds');
+        if (refundId) query.set('refundId', refundId);
+        if (bookingId) query.set('bookingId', bookingId);
+        navigate(`/owner?${query.toString()}`);
+      } else {
+        navigate(`/profile?tab=refunds${bookingId ? `&bookingId=${bookingId}` : ''}`);
+      }
+    } else if (n.loaithongbao === 'BOOKING_CANCELLED' || n.loaithongbao === 'BOOKING_UPDATED') {
+      if (userRole === 'CHUSAN') {
+        const query = new URLSearchParams();
+        query.set('tab', 'bookings');
+        if (date) query.set('date', date);
+        if (bookingId) query.set('bookingId', bookingId);
+        navigate(`/owner?${query.toString()}`);
+      } else {
+        navigate(`/profile?tab=cancelled${bookingId ? `&bookingId=${bookingId}` : ''}`);
+      }
+    } else if (n.loaithongbao === 'BOOKING') {
+      if (userRole === 'CHUSAN') {
+        const query = new URLSearchParams();
+        query.set('tab', 'bookings');
+        if (date) query.set('date', date);
+        if (bookingId) query.set('bookingId', bookingId);
+        navigate(`/owner?${query.toString()}`);
       } else if (userRole === 'ADMIN') {
         navigate('/admin?tab=ALL_FIELDS');
       } else {
-        navigate('/profile');
+        navigate(`/profile?tab=bookings${bookingId ? `&bookingId=${bookingId}` : ''}`);
       }
     } else if (n.loaithongbao === 'COMMISSION' || n.loaithongbao === 'REMINDER') {
-      // Nộp hoa hồng -> Chủ sân đến bảng quản lý, Admin đến kiểm tra sổ nợ
       if (userRole === 'CHUSAN') {
-        navigate('/owner');
+        navigate('/owner?tab=bookings');
       } else if (userRole === 'ADMIN') {
         navigate('/admin');
       }
     } else if (n.loaithongbao === 'AUTO_COMPLETE') {
-      // Trận đấu hoàn tất -> Khách đến profile để đánh giá sân
-      navigate('/profile');
+      navigate(`/profile?tab=completed${bookingId ? `&bookingId=${bookingId}` : ''}`);
+    } else {
+      if (userRole === 'CHUSAN') {
+        navigate('/owner');
+      } else if (userRole === 'ADMIN') {
+        navigate('/admin');
+      } else {
+        navigate('/profile');
+      }
     }
   };
 
@@ -346,13 +391,19 @@ export default function Header({
                                 }`}
                               >
                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                  (n.loaithongbao === 'REFUND_REQUEST' || n.loaithongbao === 'REFUND') ? 'bg-amber-100 text-amber-700' :
+                                  n.loaithongbao === 'BOOKING_CANCELLED' ? 'bg-rose-100 text-rose-600' :
+                                  n.loaithongbao === 'BOOKING_UPDATED' ? 'bg-blue-100 text-blue-600' :
                                   n.loaithongbao === 'REMINDER' ? 'bg-rose-100 text-rose-600' :
                                   n.loaithongbao === 'BOOKING' ? 'bg-emerald-100 text-emerald-600' :
                                   n.loaithongbao === 'COMMISSION' ? 'bg-purple-100 text-purple-600' :
                                   n.loaithongbao === 'AUTO_COMPLETE' ? 'bg-blue-100 text-blue-600' :
                                   'bg-slate-100 text-slate-600'
                                 }`}>
-                                  {n.loaithongbao === 'REMINDER' ? <AlertTriangle className="w-4 h-4" /> :
+                                  {(n.loaithongbao === 'REFUND_REQUEST' || n.loaithongbao === 'REFUND') ? <DollarSign className="w-4 h-4" /> :
+                                   n.loaithongbao === 'BOOKING_CANCELLED' ? <AlertTriangle className="w-4 h-4" /> :
+                                   n.loaithongbao === 'BOOKING_UPDATED' ? <Clock className="w-4 h-4" /> :
+                                   n.loaithongbao === 'REMINDER' ? <AlertTriangle className="w-4 h-4" /> :
                                    n.loaithongbao === 'BOOKING' ? <Calendar className="w-4 h-4" /> :
                                    n.loaithongbao === 'COMMISSION' ? <DollarSign className="w-4 h-4" /> :
                                    n.loaithongbao === 'AUTO_COMPLETE' ? <Clock className="w-4 h-4" /> :

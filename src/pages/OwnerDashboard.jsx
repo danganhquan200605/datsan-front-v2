@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Building2, DollarSign, Calendar, Users, Star, CheckCircle2, 
   Clock, MapPin, Phone, AlertCircle, PlusCircle, RefreshCw, ChevronRight, Eye,
@@ -20,7 +20,10 @@ import {
   confirmOwnerRefundSent,
   processMockPayment,
   getMockBookingQrSvg,
-  isMatchEnded
+  isMatchEnded,
+  createPhoneBooking,
+  calculateSlotsDurationMinutes,
+  isSlotInPast
 } from '../supabaseClient';
 import Header from '../components/Header';
 import LoginModal from '../components/LoginModal';
@@ -114,6 +117,23 @@ export default function OwnerDashboard({ user, setUser }) {
   const [isSettling, setIsSettling] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  // Deep linking & Highlighting states (Tasks 08, 09, 10)
+  const [searchParams] = useSearchParams();
+  const [highlightedBookingId, setHighlightedBookingId] = useState(null);
+  const [highlightedRefundId, setHighlightedRefundId] = useState(null);
+
+  // States Modal Đặt sân qua điện thoại (Task 11)
+  const [showPhoneBookingModal, setShowPhoneBookingModal] = useState(false);
+  const [phoneBookingCourtId, setPhoneBookingCourtId] = useState('');
+  const [phoneBookingDate, setPhoneBookingDate] = useState(() => todayStr);
+  const [phoneBookingCustomerName, setPhoneBookingCustomerName] = useState('');
+  const [phoneBookingCustomerPhone, setPhoneBookingCustomerPhone] = useState('');
+  const [phoneBookingNote, setPhoneBookingNote] = useState('');
+  const [phoneCourtSlots, setPhoneCourtSlots] = useState([]);
+  const [phoneSelectedSlots, setPhoneSelectedSlots] = useState([]);
+  const [isLoadingPhoneSlots, setIsLoadingPhoneSlots] = useState(false);
+  const [isSubmittingPhoneBooking, setIsSubmittingPhoneBooking] = useState(false);
+
   // States Ký quỹ bảo đảm (FEATURE 01)
   const [depositData, setDepositData] = useState(null);
   const [loadingDeposit, setLoadingDeposit] = useState(false);
@@ -163,13 +183,13 @@ export default function OwnerDashboard({ user, setUser }) {
   const isOwner = userRole === 'CHUSAN';
 
   // Fetch dữ liệu của riêng Chủ sân từ endpoint an toàn /api/owner/overview
-  const fetchOwnerData = async () => {
+  const fetchOwnerData = async (silent = false) => {
     if (!currentUser || !isOwner) {
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       await triggerAutoComplete();
       const res = await fetchOwnerOverview();
       const overview = res?.data || {};
@@ -180,35 +200,35 @@ export default function OwnerDashboard({ user, setUser }) {
       console.error('Lỗi tải dữ liệu Owner Dashboard:', err);
       setRatingSummary(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   // Fetch thông tin ký quỹ của Chủ Sân (FEATURE 01)
-  const fetchOwnerDepositData = async () => {
+  const fetchOwnerDepositData = async (silent = false) => {
     if (!currentUser || !isOwner) return;
     try {
-      setLoadingDeposit(true);
+      if (!silent) setLoadingDeposit(true);
       const res = await fetchOwnerDeposit();
       if (res?.deposit) setDepositData(res.deposit);
     } catch (err) {
       console.warn('Lỗi lấy thông tin ký quỹ:', err);
     } finally {
-      setLoadingDeposit(false);
+      if (!silent) setLoadingDeposit(false);
     }
   };
 
   // Fetch danh sách hoàn tiền khách hủy (FEATURE 02)
-  const fetchOwnerRefundsData = async () => {
+  const fetchOwnerRefundsData = async (silent = false) => {
     if (!currentUser || !isOwner) return;
     try {
-      setLoadingRefunds(true);
+      if (!silent) setLoadingRefunds(true);
       const res = await fetchOwnerRefunds();
       if (res?.refunds) setRefundsList(res.refunds);
     } catch (err) {
       console.warn('Lỗi lấy danh sách hoàn tiền:', err);
     } finally {
-      setLoadingRefunds(false);
+      if (!silent) setLoadingRefunds(false);
     }
   };
 
@@ -220,6 +240,68 @@ export default function OwnerDashboard({ user, setUser }) {
     } else {
       setLoading(false);
     }
+  }, [currentUser, isOwner]);
+
+  // Deep linking qua searchParams (Tasks 08, 09, 10)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    const dateParam = searchParams.get('date');
+    const bookingIdParam = searchParams.get('bookingId');
+    const refundIdParam = searchParams.get('refundId');
+
+    if (tabParam) {
+      const upper = tabParam.toUpperCase();
+      if (['BOOKINGS', 'FIELDS', 'REFUNDS'].includes(upper)) {
+        setActiveTab(upper);
+      }
+    }
+    if (dateParam) {
+      setDateFilter(dateParam);
+    }
+    if (bookingIdParam) {
+      setHighlightedBookingId(Number(bookingIdParam));
+      const timer = setTimeout(() => setHighlightedBookingId(null), 4000);
+      return () => clearTimeout(timer);
+    }
+    if (refundIdParam) {
+      setHighlightedRefundId(Number(refundIdParam));
+      const timer = setTimeout(() => setHighlightedRefundId(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
+  // Cuộn đến hàng được highlight
+  useEffect(() => {
+    if (highlightedBookingId) {
+      const el = document.getElementById(`booking-row-${highlightedBookingId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (highlightedRefundId) {
+      const el = document.getElementById(`refund-row-${highlightedRefundId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightedBookingId, highlightedRefundId, bookingList, refundsList]);
+
+  // TASK 07: Tự động làm mới dữ liệu nền mỗi 8 giây khi tab active và khi focus lại tab
+  useEffect(() => {
+    if (!currentUser || !isOwner) return;
+
+    const silentRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        fetchOwnerData(true);
+        fetchOwnerDepositData(true);
+        fetchOwnerRefundsData(true);
+      }
+    };
+
+    const intervalId = setInterval(silentRefresh, 8000);
+    window.addEventListener('focus', silentRefresh);
+    document.addEventListener('visibilitychange', silentRefresh);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', silentRefresh);
+      document.removeEventListener('visibilitychange', silentRefresh);
+    };
   }, [currentUser, isOwner]);
 
   // TASK 05: Tự động làm mới toàn diện dữ liệu khi bấm nút Quản lý sân từ Header
@@ -234,6 +316,115 @@ export default function OwnerDashboard({ user, setUser }) {
     window.addEventListener('owner:refresh-data', handleOwnerRefresh);
     return () => window.removeEventListener('owner:refresh-data', handleOwnerRefresh);
   }, [currentUser, isOwner]);
+
+  // TASK 11: Tải danh sách ca thi đấu khả dụng khi chọn cụm sân và ngày
+  useEffect(() => {
+    if (!phoneBookingCourtId || !showPhoneBookingModal) return;
+    let isMounted = true;
+    async function loadPhoneCourtAvailability() {
+      setIsLoadingPhoneSlots(true);
+      setPhoneSelectedSlots([]);
+      try {
+        const [slotsRes, availRes] = await Promise.all([
+          supabase.from('khunggio').select('*').eq('masan', phoneBookingCourtId).order('makhunggio'),
+          supabase.availability(phoneBookingDate, phoneBookingCourtId)
+        ]);
+        if (!isMounted) return;
+        const allSlots = slotsRes?.data || [];
+        const booked = availRes?.data || [];
+        const isPastDate = phoneBookingDate < todayStr;
+        const isToday = phoneBookingDate === todayStr;
+
+        const calculated = allSlots.map(slot => {
+          const isBooked = booked.some(
+            b => Number(b.makhunggio) === Number(slot.makhunggio || slot.id) &&
+              !['DAHUY', 'DA_HUY', 'HUY'].includes(String(b.trangthai || '').toUpperCase())
+          );
+          const isPast = isPastDate || (isToday && isSlotInPast(phoneBookingDate, slot.giobatdau));
+          return {
+            ...slot,
+            id: slot.makhunggio || slot.id,
+            start: slot.giobatdau?.slice(0, 5),
+            end: slot.gioketthuc?.slice(0, 5),
+            price: Number(slot.giasan || slot.gia || 200000),
+            isBooked,
+            isPast,
+            isAvailable: !isBooked && !isPast
+          };
+        });
+        setPhoneCourtSlots(calculated);
+      } catch (err) {
+        console.error('Lỗi tải khung giờ sân qua điện thoại:', err);
+      } finally {
+        if (isMounted) setIsLoadingPhoneSlots(false);
+      }
+    }
+    loadPhoneCourtAvailability();
+    return () => { isMounted = false; };
+  }, [phoneBookingCourtId, phoneBookingDate, showPhoneBookingModal]);
+
+  const phoneTotalMinutes = useMemo(() => {
+    return calculateSlotsDurationMinutes(phoneSelectedSlots);
+  }, [phoneSelectedSlots]);
+
+  const phoneTotalPrice = useMemo(() => {
+    return phoneSelectedSlots.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  }, [phoneSelectedSlots]);
+
+  const togglePhoneSlot = (slot) => {
+    if (!slot.isAvailable) return;
+    setPhoneSelectedSlots(prev => {
+      const exists = prev.some(s => s.id === slot.id);
+      if (exists) {
+        return prev.filter(s => s.id !== slot.id);
+      } else {
+        const next = [...prev, slot];
+        const dur = calculateSlotsDurationMinutes(next);
+        if (dur > 120) {
+          alert('⚠️ Đơn đặt sân tiền mặt chỉ áp dụng tối đa 120 phút (2 giờ).');
+          return prev;
+        }
+        return next;
+      }
+    });
+  };
+
+  const handleCreatePhoneBookingSubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmittingPhoneBooking) return;
+    if (!phoneBookingCourtId) return alert('Vui lòng chọn cụm sân.');
+    if (!phoneBookingCustomerName.trim()) return alert('Vui lòng nhập họ tên khách hàng.');
+    if (!phoneBookingCustomerPhone.trim()) return alert('Vui lòng nhập số điện thoại khách hàng.');
+    if (phoneSelectedSlots.length === 0) return alert('Vui lòng chọn ít nhất một ca thi đấu còn trống.');
+    if (phoneTotalMinutes > 120) {
+      return alert('⚠️ Đơn đặt sân tiền mặt qua điện thoại chỉ áp dụng tối đa 120 phút (2 giờ).');
+    }
+
+    try {
+      setIsSubmittingPhoneBooking(true);
+      const res = await createPhoneBooking({
+        masan: Number(phoneBookingCourtId),
+        date: phoneBookingDate,
+        slotIds: phoneSelectedSlots.map(s => s.id),
+        customerName: phoneBookingCustomerName.trim(),
+        customerPhone: phoneBookingCustomerPhone.trim(),
+        note: phoneBookingNote.trim()
+      });
+      if (res?.error) throw new Error(res.error);
+
+      alert(`✅ Đặt sân qua điện thoại thành công! Mã đơn: #${res.data?.madatsan || res.bookingId}`);
+      setShowPhoneBookingModal(false);
+      setPhoneSelectedSlots([]);
+      setPhoneBookingCustomerName('');
+      setPhoneBookingCustomerPhone('');
+      setPhoneBookingNote('');
+      fetchOwnerData(true);
+    } catch (err) {
+      alert('Lỗi đặt sân qua điện thoại: ' + (err.message || 'Lỗi hệ thống'));
+    } finally {
+      setIsSubmittingPhoneBooking(false);
+    }
+  };
 
   // TASK 01: Bắt đầu quy trình nộp ký quỹ bảo đảm
   const handleStartDepositPayment = async () => {
@@ -456,9 +647,11 @@ export default function OwnerDashboard({ user, setUser }) {
 
     // 4. Tìm kiếm
     const query = searchQuery.trim().toLowerCase();
+    const customerName = (meta.customerName || b.nguoidung?.hoten || '').toLowerCase();
+    const customerPhone = meta.customerPhone || b.nguoidung?.sodienthoai || '';
     const matchSearch = !query ||
-      (b.nguoidung?.hoten || '').toLowerCase().includes(query) ||
-      (b.nguoidung?.sodienthoai || '').includes(query) ||
+      customerName.includes(query) ||
+      customerPhone.includes(query) ||
       (b.san?.tensan || '').toLowerCase().includes(query) ||
       String(b.madatsan || '').includes(query);
 
@@ -504,14 +697,31 @@ export default function OwnerDashboard({ user, setUser }) {
           </div>
           <div className="flex items-center gap-3">
             <button 
+              onClick={() => {
+                if (sanList.length === 0) {
+                  alert('Bạn chưa có cụm sân nào để tạo đơn đặt sân. Vui lòng thêm cụm sân trước.');
+                  return;
+                }
+                setPhoneBookingCourtId(String(sanList[0]?.masan || sanList[0]?.MaSan || ''));
+                setShowPhoneBookingModal(true);
+              }}
+              className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Phone className="w-4 h-4" /> Đặt Sân Qua Điện Thoại
+            </button>
+            <button 
               onClick={() => navigate('/register-field')}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" /> Thêm Cụm Sân Mới
             </button>
             <button 
-              onClick={fetchOwnerData}
-              className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl transition"
+              onClick={() => {
+                fetchOwnerData();
+                fetchOwnerDepositData();
+                fetchOwnerRefundsData();
+              }}
+              className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl transition cursor-pointer"
               title="Làm mới dữ liệu"
             >
               <RefreshCw className="w-4 h-4" />
@@ -857,10 +1067,15 @@ export default function OwnerDashboard({ user, setUser }) {
                           const method = meta.paymentMethod || (b.trangthai === 'CHO_THI_DAU' ? 'TIEN_MAT' : 'QR');
                           const commissionAmt = meta.commissionAmount || Math.round(Number(b.tongtien || 0) * 0.1);
                           const isCash = method === 'TIEN_MAT';
-                          const isPendingCash = isCash && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
+                          const isCashReceived = Boolean(meta.cashReceivedAt || meta.paymentStatus === 'PAID');
+                          const isPendingCashUnpaid = isCash && !isCashReceived && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
+                          const isPendingCashPaid = isCash && isCashReceived && (b.trangthai === 'CHO_THI_DAU' || b.trangthai === 'CHOXACNHAN');
                           const isPendingQR = !isCash && (b.trangthai === 'DA_THANH_TOAN' || b.trangthai === 'DACANCOC' || b.trangthai === 'CHOXACNHAN' || b.trangthai === 'CHO_THI_DAU');
                           const isCompleted = b.trangthai === 'HOAN_THANH' || b.trangthai === 'HOANTHANH';
                           const isCancelled = b.trangthai === 'DA_HUY' || b.trangthai === 'DAHUY';
+                          const isPhoneBooking = meta.bookingSource === 'PHONE' || b.nguon_dat === 'PHONE';
+                          const customerName = meta.customerName || khachHang.hoten || (isPhoneBooking ? 'Khách đặt qua điện thoại' : 'Khách vãng lai');
+                          const customerPhone = meta.customerPhone || khachHang.sodienthoai || 'Chưa có SĐT';
 
                           // Trích xuất khung giờ đặt
                           const slotTimes = (b.datsan_khunggio || [])
@@ -873,11 +1088,26 @@ export default function OwnerDashboard({ user, setUser }) {
                             .join(', ');
 
                           return (
-                            <tr key={b.madatsan} className="hover:bg-slate-50/60">
+                            <tr 
+                              key={b.madatsan} 
+                              id={`booking-row-${b.madatsan}`}
+                              className={`transition-colors duration-500 ${
+                                highlightedBookingId === Number(b.madatsan)
+                                  ? 'bg-amber-100/90 ring-2 ring-amber-400 font-medium'
+                                  : 'hover:bg-slate-50/60'
+                              }`}
+                            >
                               <td className="py-4 px-4 font-bold text-slate-900">
-                                <div>{khachHang.hoten || 'Khách vãng lai'}</div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{customerName}</span>
+                                  {isPhoneBooking && (
+                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-md flex items-center gap-1">
+                                      <Phone className="w-2.5 h-2.5" /> Đặt qua ĐT
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[11px] text-emerald-700 flex items-center gap-1 font-mono mt-0.5">
-                                  <Phone className="w-3 h-3" /> {khachHang.sodienthoai || 'Chưa có SĐT'}
+                                  <Phone className="w-3 h-3" /> {customerPhone}
                                 </div>
                               </td>
                               <td className="py-4 px-4">
@@ -922,9 +1152,14 @@ export default function OwnerDashboard({ user, setUser }) {
                                 )}
                               </td>
                               <td className="py-4 px-4">
-                                {isPendingCash && (
-                                  <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full">
-                                    Chờ thi đấu (Tiền mặt)
+                                {isPendingCashUnpaid && (
+                                  <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">
+                                    Chờ thu tiền mặt
+                                  </span>
+                                )}
+                                {isPendingCashPaid && (
+                                  <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-blue-600" /> Đã thu tiền • Chờ đấu
                                   </span>
                                 )}
                                 {isPendingQR && (
@@ -946,30 +1181,30 @@ export default function OwnerDashboard({ user, setUser }) {
                                     Đã hủy
                                   </span>
                                 )}
-                                {!isPendingCash && !isPendingQR && !isCompleted && !isCancelled && (
+                                {!isPendingCashUnpaid && !isPendingCashPaid && !isPendingQR && !isCompleted && !isCancelled && (
                                   <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-full">
                                     {b.trangthai || 'Chờ xác nhận'}
                                   </span>
                                 )}
                               </td>
                               <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
-                                {isPendingCash && (
-                                  <>
-                                    <button
-                                      disabled={isSettling}
-                                      onClick={() => handleSettleAction('CONFIRM_CASH', b.madatsan)}
-                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-sm cursor-pointer"
-                                    >
-                                      ✓ Xác nhận thu tiền mặt
-                                    </button>
-                                    <button
-                                      disabled={isSettling}
-                                      onClick={() => handleSettleAction('CANCEL_NO_SHOW', b.madatsan)}
-                                      className="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 font-bold text-[11px] rounded-lg cursor-pointer"
-                                    >
-                                      ✕ Hủy vắng mặt
-                                    </button>
-                                  </>
+                                {isPendingCashUnpaid && (
+                                  <button
+                                    disabled={isSettling}
+                                    onClick={() => handleSettleAction('CONFIRM_CASH', b.madatsan)}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-[11px] rounded-lg shadow-sm cursor-pointer"
+                                  >
+                                    ✓ Xác nhận thu tiền mặt
+                                  </button>
+                                )}
+                                {(isPendingCashUnpaid || isPendingCashPaid) && (
+                                  <button
+                                    disabled={isSettling}
+                                    onClick={() => handleSettleAction('CANCEL_NO_SHOW', b.madatsan)}
+                                    className="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 font-bold text-[11px] rounded-lg cursor-pointer"
+                                  >
+                                    ✕ Hủy vắng mặt
+                                  </button>
                                 )}
                                 {!isCompleted && !isCancelled && (
                                   <button
@@ -1098,7 +1333,15 @@ export default function OwnerDashboard({ user, setUser }) {
                           const receiverHolder = rf.chutaikhoan_nhan || rf.tentaikhoan_nhan || '—';
                           const isOverdue = (rf.trangthai === 'CHO_HOAN' || rf.trangthai === 'QUA_HAN') && new Date(rf.han_xuly) < new Date();
                           return (
-                            <tr key={refundId || rf.madatsan} className="hover:bg-slate-50/70 transition">
+                            <tr 
+                              key={refundId || rf.madatsan} 
+                              id={`refund-row-${refundId}`}
+                              className={`transition-colors duration-500 ${
+                                highlightedRefundId === Number(refundId) || highlightedBookingId === Number(rf.madatsan)
+                                  ? 'bg-amber-100/90 ring-2 ring-amber-400 font-medium'
+                                  : 'hover:bg-slate-50/70'
+                              }`}
+                            >
                               <td className="py-3 px-4">
                                 <div className="font-extrabold text-slate-900">Đơn #{rf.madatsan}</div>
                                 <div className="text-[10px] text-slate-400">Yêu cầu: #{refundId || '—'}</div>
@@ -1427,6 +1670,209 @@ export default function OwnerDashboard({ user, setUser }) {
                   {isSubmittingRefundSent ? 'Đang xử lý...' : 'Xác nhận hoàn tiền'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL TẠO ĐƠN ĐẶT SÂN QUA ĐIỆN THOẠI (TASK 11) */}
+        {showPhoneBookingModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
+              <button 
+                onClick={() => {
+                  setShowPhoneBookingModal(false);
+                  setPhoneSelectedSlots([]);
+                }}
+                className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center mb-5">
+                <span className="px-3 py-1 bg-purple-50 text-purple-700 text-[11px] font-bold rounded-full uppercase tracking-wider border border-purple-200 flex items-center justify-center gap-1.5 w-fit mx-auto">
+                  <Phone className="w-3.5 h-3.5" /> Nghiệp Vụ Chủ Sân
+                </span>
+                <h3 className="text-xl font-black text-slate-900 mt-2">Đặt Sân Qua Điện Thoại</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Tạo đơn giữ chỗ tức thì cho khách vãng lai gọi điện hoặc đặt trực tiếp tại sân
+                </p>
+              </div>
+
+              <form onSubmit={handleCreatePhoneBookingSubmit} className="space-y-4 text-xs">
+                {/* Thông tin khách hàng */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Họ tên khách hàng <span className="text-rose-500">*</span>
+                    </label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Nguyễn Văn A"
+                      value={phoneBookingCustomerName}
+                      onChange={e => setPhoneBookingCustomerName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Số điện thoại khách <span className="text-rose-500">*</span>
+                    </label>
+                    <input 
+                      type="tel"
+                      required
+                      placeholder="090XXXXXXX"
+                      value={phoneBookingCustomerPhone}
+                      onChange={e => setPhoneBookingCustomerPhone(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Chọn sân & ngày */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Chọn cụm sân <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={phoneBookingCourtId}
+                      onChange={e => setPhoneBookingCourtId(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {sanList.map(san => (
+                        <option key={san.masan || san.MaSan} value={san.masan || san.MaSan}>
+                          {san.tensan || san.TenSan}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Ngày thi đấu <span className="text-rose-500">*</span>
+                    </label>
+                    <input 
+                      type="date"
+                      min={todayStr}
+                      value={phoneBookingDate}
+                      onChange={e => setPhoneBookingDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Chọn khung giờ thi đấu */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-slate-700">
+                      Chọn ca thi đấu <span className="text-rose-500">*</span> (Tối đa 120 phút)
+                    </label>
+                    {phoneSelectedSlots.length > 0 && (
+                      <span className={`text-[11px] font-bold ${phoneTotalMinutes > 120 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                        Đã chọn: {phoneTotalMinutes} phút {phoneTotalMinutes > 120 ? '(Quá 120 phút)' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {isLoadingPhoneSlots ? (
+                    <div className="py-8 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-purple-600" /> Đang kiểm tra tình trạng sân...
+                    </div>
+                  ) : phoneCourtSlots.length === 0 ? (
+                    <div className="py-6 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-200">
+                      Không có khung giờ nào được thiết lập cho sân này.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1 border border-slate-200 rounded-xl bg-slate-50">
+                      {phoneCourtSlots.map(slot => {
+                        const isSelected = phoneSelectedSlots.some(s => s.id === slot.id);
+                        return (
+                          <button
+                            type="button"
+                            key={slot.id}
+                            disabled={!slot.isAvailable}
+                            onClick={() => togglePhoneSlot(slot)}
+                            className={`p-2.5 rounded-xl text-left border text-xs transition cursor-pointer flex flex-col justify-between ${
+                              !slot.isAvailable
+                                ? 'bg-slate-200/70 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                                : isSelected
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                : 'bg-white hover:bg-purple-50 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <div className="font-extrabold flex items-center justify-between">
+                              <span>{slot.start} - {slot.end}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5" />}
+                            </div>
+                            <div className={`text-[10px] mt-1 ${isSelected ? 'text-purple-100 font-bold' : 'text-slate-500 font-medium'}`}>
+                              {!slot.isAvailable ? (slot.isPast ? 'Đã qua giờ' : 'Đã có khách đặt') : `${Number(slot.price).toLocaleString('vi-VN')} đ`}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Ghi chú thêm */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Ghi chú (Tùy chọn)</label>
+                  <input 
+                    type="text"
+                    placeholder="VD: Khách quen anh Tuấn, mượn thêm bóng..."
+                    value={phoneBookingNote}
+                    onChange={e => setPhoneBookingNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                {/* Tóm tắt thanh toán tiền mặt */}
+                <div className="bg-purple-50/70 border border-purple-200 rounded-2xl p-3.5 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Hình thức thanh toán:</span>
+                    <strong className="text-purple-900 font-bold flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5" /> Tiền mặt trực tiếp tại sân
+                    </strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Hoa hồng sàn (10%):</span>
+                    <span className="text-slate-700 font-medium font-mono">
+                      {Math.round(phoneTotalPrice * 0.1).toLocaleString('vi-VN')} đ (Ghi nợ khi hoàn tất)
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-1.5 border-t border-purple-200 text-sm items-baseline">
+                    <span className="font-bold text-slate-800">Tổng tiền thu tại sân:</span>
+                    <strong className="text-purple-700 font-black text-base">{phoneTotalPrice.toLocaleString('vi-VN')} đ</strong>
+                  </div>
+                </div>
+
+                {phoneTotalMinutes > 120 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] text-center font-medium">
+                    ⚠️ Tổng thời lượng đã chọn ({phoneTotalMinutes} phút) vượt quá giới hạn 120 phút cho đơn tiền mặt. Vui lòng bỏ bớt ca.
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPhoneBookingModal(false);
+                      setPhoneSelectedSlots([]);
+                    }}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPhoneBooking || phoneSelectedSlots.length === 0 || phoneTotalMinutes > 120}
+                    className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isSubmittingPhoneBooking ? 'Đang tạo đơn...' : 'Xác Nhận Đặt Sân'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

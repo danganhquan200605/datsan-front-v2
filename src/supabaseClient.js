@@ -278,6 +278,27 @@ export async function fetchCustomerRefunds() {
   return apiRequest('/api/customer/refunds');
 }
 
+// HOTFIX V4: BOOKING LIFECYCLE, SLOT MANAGEMENT & PHONE BOOKINGS
+export async function cancelPendingBooking(bookingId) {
+  return apiRequest(`/api/bookings/${bookingId}/cancel-pending`, {
+    method: 'POST'
+  });
+}
+
+export async function switchBookingPaymentMethod(bookingId, paymentMethod) {
+  return apiRequest(`/api/bookings/${bookingId}/switch-method`, {
+    method: 'POST',
+    body: JSON.stringify({ paymentMethod })
+  });
+}
+
+export async function createPhoneBooking(data) {
+  return apiRequest('/api/owner/phone-booking', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
 export async function fetchAdminRefunds() {
   return apiRequest('/api/admin/refunds');
 }
@@ -416,6 +437,24 @@ export const supabase = {
         body: JSON.stringify({ masan, date, slotIds, services, paymentMethod }),
       });
       return { data: result.data, error: null };
+    } catch (error) { return { data: null, error }; }
+  },
+  async cancelPendingBooking(bookingId) {
+    try {
+      const result = await cancelPendingBooking(bookingId);
+      return { data: result, error: null };
+    } catch (error) { return { data: null, error }; }
+  },
+  async switchBookingPaymentMethod(bookingId, paymentMethod) {
+    try {
+      const result = await switchBookingPaymentMethod(bookingId, paymentMethod);
+      return { data: result, error: null };
+    } catch (error) { return { data: null, error }; }
+  },
+  async createPhoneBooking(data) {
+    try {
+      const result = await createPhoneBooking(data);
+      return { data: result, error: null };
     } catch (error) { return { data: null, error }; }
   },
   async settleOwnerBooking(action, bookingId, ownerId) {

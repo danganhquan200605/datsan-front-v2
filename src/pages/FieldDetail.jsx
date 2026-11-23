@@ -6,7 +6,7 @@ import {
   Tv, Heart, ExternalLink, Shield, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, User, Users,
   Search, Bell, LogIn, LogOut, Building2, PlusCircle, LayoutDashboard, X, QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow, calculateSlotsDurationMinutes } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow, calculateSlotsDurationMinutes, cancelPendingBooking, switchBookingPaymentMethod } from '../supabaseClient';
 
 const getLocalDateValue = (date = new Date()) => {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -376,6 +376,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
   const userRole = currentUser?.VaiTro || currentUser?.vaitro || 'KHACHHANG';
 
   const handleConfirmBooking = async (method = paymentMethod) => {
+    if (isSubmitting) return;
     if (selectedSlots.length === 0) return;
     if (!currentUser) {
       setShowLoginModal(true);
@@ -428,6 +429,57 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
       }
     } catch (e) {
       alert('Lỗi đặt sân: ' + e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSwitchPaymentMethodInPending = async (targetMethod = 'TIEN_MAT') => {
+    if (isSubmitting || !pendingBookingData?.bookingId) return;
+    if (targetMethod === 'TIEN_MAT' && (pendingBookingData.durationMinutes || 0) > 120) {
+      alert('⚠️ Đơn đặt sân có thời lượng trên 120 phút không thể thanh toán tiền mặt theo quy định.');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      await switchBookingPaymentMethod(pendingBookingData.bookingId, targetMethod);
+      if (targetMethod === 'TIEN_MAT') {
+        setShowPaymentModal(false);
+        setPendingBookingData(null);
+        setSelectedSlots([]);
+        fetchBookedSlots();
+        alert('💵 Đã chuyển sang hình thức thanh toán tiền mặt tại sân thành công! Khung giờ đặt sân của bạn được bảo toàn.');
+        navigate('/profile');
+      } else {
+        alert('✅ Đã chuyển sang thanh toán qua mã QR.');
+      }
+    } catch (err) {
+      alert('Không thể đổi phương thức thanh toán: ' + (err.message || 'Lỗi hệ thống'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelPendingBooking = async () => {
+    if (isSubmitting) return;
+    if (!pendingBookingData?.bookingId) {
+      setShowPaymentModal(false);
+      setPendingBookingData(null);
+      return;
+    }
+    const ok = window.confirm('Bạn có chắc chắn muốn hủy đơn đặt sân này và giải phóng các khung giờ đã chọn không?');
+    if (!ok) return;
+
+    try {
+      setIsSubmitting(true);
+      await cancelPendingBooking(pendingBookingData.bookingId);
+      setShowPaymentModal(false);
+      setPendingBookingData(null);
+      setSelectedSlots([]);
+      fetchBookedSlots();
+      alert('❌ Đã hủy đơn đặt sân thành công. Khung giờ đã được giải phóng.');
+    } catch (err) {
+      alert('Lỗi hủy đơn đặt sân: ' + (err.message || 'Lỗi hệ thống'));
     } finally {
       setIsSubmitting(false);
     }
@@ -1149,9 +1201,13 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative border border-slate-100 max-h-[92vh] overflow-y-auto">
             <button 
               onClick={() => {
-                setShowPaymentModal(false);
-                setPendingBookingData(null);
-                setSimulationFailed(false);
+                if (pendingBookingData?.bookingId) {
+                  handleCancelPendingBooking();
+                } else {
+                  setShowPaymentModal(false);
+                  setPendingBookingData(null);
+                  setSimulationFailed(false);
+                }
               }}
               className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition"
             >
@@ -1226,21 +1282,28 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     </p>
 
                     <div className="flex gap-2 pt-2 border-t border-slate-100">
+                      {(pendingBookingData?.durationMinutes ?? 0) <= 120 ? (
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleSwitchPaymentMethodInPending('TIEN_MAT')}
+                          className="flex-1 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <DollarSign className="w-3.5 h-3.5" />
+                          Đổi sang tiền mặt
+                        </button>
+                      ) : (
+                        <div className="flex-1 py-1.5 px-2 bg-amber-50 text-amber-800 text-[11px] rounded-lg text-center font-medium flex items-center justify-center">
+                          Ca &gt; 2h: chỉ nhận QR
+                        </div>
+                      )}
                       <button
                         type="button"
-                        onClick={() => setPendingBookingData(null)}
-                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                        disabled={isSubmitting}
+                        onClick={handleCancelPendingBooking}
+                        className="flex-1 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold text-xs hover:bg-rose-100 transition cursor-pointer flex items-center justify-center gap-1"
                       >
-                        Đổi phương thức
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPaymentModal(false);
-                          setPendingBookingData(null);
-                        }}
-                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
-                      >
+                        <X className="w-3.5 h-3.5" />
                         Hủy thanh toán
                       </button>
                     </div>
@@ -1254,7 +1317,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     {(pendingBookingData?.durationMinutes ?? 0) <= 120 ? (
                       <button
                         disabled={isSubmitting}
-                        onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE', 'SWITCH_CASH')}
+                        onClick={() => handleSwitchPaymentMethodInPending('TIEN_MAT')}
                         className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <DollarSign className="w-4 h-4" />
@@ -1277,7 +1340,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
                     <button
                       disabled={isSubmitting}
-                      onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE', 'CANCEL')}
+                      onClick={handleCancelPendingBooking}
                       className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <X className="w-4 h-4" />

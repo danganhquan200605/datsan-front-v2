@@ -6,7 +6,7 @@ import {
   Sparkles, Star, Heart, Navigation, ExternalLink, Ticket, Check, RefreshCw, Eye, Users, MessageSquare, X,
   QrCode, DollarSign
 } from 'lucide-react';
-import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow } from '../supabaseClient';
+import { requestPhoneOtp, supabase, verifyPhoneOtp, broadcastAuthChange, getMockBookingQrSvg, simulateBookingPayment, isSlotInPast, getVietnamNow, cancelPendingBooking, switchBookingPaymentMethod } from '../supabaseClient';
 import Header from '../components/Header';
 
 const DEFAULT_IMAGES = [
@@ -384,6 +384,54 @@ export default function Home({ user, setUser }) {
     } catch (err) {
       console.error('Lỗi khi lưu đơn:', err);
       alert('Lỗi đặt sân: ' + (err.message || 'Lỗi hệ thống'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSwitchPaymentMethodInPending = async (targetMethod = 'TIEN_MAT') => {
+    if (isSubmitting || !pendingBookingData?.bookingId) return;
+    try {
+      setIsSubmitting(true);
+      await switchBookingPaymentMethod(pendingBookingData.bookingId, targetMethod);
+      if (targetMethod === 'TIEN_MAT') {
+        setBookingSuccessModal(false);
+        setPendingBookingData(null);
+        setSelectedSlotForBooking(null);
+        fetchData();
+        alert('💵 Đã chuyển sang hình thức thanh toán tiền mặt tại sân thành công! Khung giờ đặt sân của bạn được bảo toàn.');
+        navigate('/profile');
+      } else {
+        alert('✅ Đã chuyển sang thanh toán qua mã QR.');
+      }
+    } catch (err) {
+      alert('Không thể đổi phương thức: ' + (err.message || 'Lỗi hệ thống'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelPendingBooking = async () => {
+    if (isSubmitting) return;
+    if (!pendingBookingData?.bookingId) {
+      setBookingSuccessModal(false);
+      setPendingBookingData(null);
+      setSelectedSlotForBooking(null);
+      return;
+    }
+    const ok = window.confirm('Bạn có chắc chắn muốn hủy đơn đặt sân này và giải phóng các khung giờ đã chọn không?');
+    if (!ok) return;
+
+    try {
+      setIsSubmitting(true);
+      await cancelPendingBooking(pendingBookingData.bookingId);
+      setBookingSuccessModal(false);
+      setPendingBookingData(null);
+      setSelectedSlotForBooking(null);
+      fetchData();
+      alert('❌ Đã hủy đơn đặt sân thành công. Khung giờ đã được giải phóng.');
+    } catch (err) {
+      alert('Lỗi hủy đơn đặt sân: ' + (err.message || 'Lỗi hệ thống'));
     } finally {
       setIsSubmitting(false);
     }
@@ -833,9 +881,13 @@ export default function Home({ user, setUser }) {
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => {
-                setBookingSuccessModal(false);
-                setPendingBookingData(null);
-                setSimulationFailed(false);
+                if (pendingBookingData?.bookingId) {
+                  handleCancelPendingBooking();
+                } else {
+                  setBookingSuccessModal(false);
+                  setPendingBookingData(null);
+                  setSimulationFailed(false);
+                }
               }}
               className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition"
             >
@@ -887,19 +939,20 @@ export default function Home({ user, setUser }) {
                     <div className="flex gap-2 pt-2 border-t border-slate-100">
                       <button
                         type="button"
-                        onClick={() => setPendingBookingData(null)}
-                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                        disabled={isSubmitting}
+                        onClick={() => handleSwitchPaymentMethodInPending('TIEN_MAT')}
+                        className="flex-1 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition cursor-pointer flex items-center justify-center gap-1"
                       >
-                        Đổi phương thức
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Đổi sang tiền mặt
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setShowPaymentModal(false);
-                          setPendingBookingData(null);
-                        }}
-                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                        disabled={isSubmitting}
+                        onClick={handleCancelPendingBooking}
+                        className="flex-1 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold text-xs hover:bg-rose-100 transition cursor-pointer flex items-center justify-center gap-1"
                       >
+                        <X className="w-3.5 h-3.5" />
                         Hủy thanh toán
                       </button>
                     </div>
@@ -912,7 +965,7 @@ export default function Home({ user, setUser }) {
 
                     <button
                       disabled={isSubmitting}
-                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'SWITCH_CASH')}
+                      onClick={() => handleSwitchPaymentMethodInPending('TIEN_MAT')}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <DollarSign className="w-4 h-4" />
@@ -930,7 +983,7 @@ export default function Home({ user, setUser }) {
 
                     <button
                       disabled={isSubmitting}
-                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'CANCEL')}
+                      onClick={handleCancelPendingBooking}
                       className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <X className="w-4 h-4" />
