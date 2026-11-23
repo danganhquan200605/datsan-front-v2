@@ -76,6 +76,8 @@ const getQuickDateList = (selectedDateStr) => {
   return { list, isNotToday: diffDays > 0, todayStr };
 };
 
+const COURT_IMG_FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'%3E%3Crect width='800' height='600' fill='%231e293b'/%3E%3Crect x='100' y='100' width='600' height='400' fill='none' stroke='%2310b981' stroke-width='6' rx='12'/%3E%3Cline x1='400' y1='100' x2='400' y2='500' stroke='%2310b981' stroke-width='4'/%3E%3Ccircle cx='400' cy='300' r='80' fill='none' stroke='%2310b981' stroke-width='4'/%3E%3Ctext x='400' y='305' font-family='system-ui, sans-serif' font-size='22' font-weight='bold' fill='%23ffffff' text-anchor='middle'%3EDATSAN ONLINE%3C/text%3E%3C/svg%3E";
+
 export default function FieldDetail({ sanId: propSanId, onBack, user, setUser }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -687,7 +689,12 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
           <div className="lg:col-span-8 space-y-8">
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2 relative h-[380px] rounded-2xl overflow-hidden shadow-sm bg-slate-100">
-                <img src={sanInfo?.Image} alt="Main" className="w-full h-full object-cover" />
+                <img 
+                  src={sanInfo?.Image} 
+                  alt="Main" 
+                  className="w-full h-full object-cover" 
+                  onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = COURT_IMG_FALLBACK; }}
+                />
               </div>
               <div className="grid grid-rows-3 gap-2 h-[380px]">
                 <div className="rounded-xl overflow-hidden bg-slate-100 relative">
@@ -695,6 +702,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     src={sanInfo?.subImages?.[0] || "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=400&q=80"} 
                     alt="Sub 1" 
                     className="w-full h-full object-cover" 
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = COURT_IMG_FALLBACK; }}
                   />
                 </div>
                 <div className="rounded-xl overflow-hidden bg-slate-100 relative">
@@ -702,6 +710,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     src={sanInfo?.subImages?.[1] || "https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=400&q=80"} 
                     alt="Sub 2" 
                     className="w-full h-full object-cover" 
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = COURT_IMG_FALLBACK; }}
                   />
                 </div>
                 <div className="rounded-xl overflow-hidden bg-slate-100 relative">
@@ -709,6 +718,7 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                     src={sanInfo?.subImages?.[2] || "https://images.unsplash.com/photo-1626248801379-51a0748a5f96?auto=format&fit=crop&w=400&q=80"} 
                     alt="Sub 3" 
                     className="w-full h-full object-cover" 
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = COURT_IMG_FALLBACK; }}
                   />
                 </div>
               </div>
