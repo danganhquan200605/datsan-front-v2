@@ -78,19 +78,38 @@ export default function RegisterField({ user, setUser }) {
 
   // HÀM XỬ LÝ UPLOAD FILE LÊN SUPABASE STORAGE
   const handleFileUpload = async (event, keyName, setUrlState) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
+
+    // Reset input value so selecting the same file triggers onChange
+    event.target.value = '';
+
+    // Validate MIME type & extension
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const fileExt = (file.name.split('.').pop() || '').toLowerCase();
+    const allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+
+    if (!allowedTypes.includes(file.type) && !allowedExts.includes(fileExt)) {
+      alert('Định dạng ảnh không hợp lệ! Vui lòng chỉ chọn ảnh JPG, PNG hoặc WEBP.');
+      return;
+    }
+
+    // Validate size (max 5MB)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      alert(`Dung lượng ảnh vượt quá 5MB (${(file.size / (1024 * 1024)).toFixed(1)}MB). Vui lòng chọn ảnh nhỏ hơn 5MB.`);
+      return;
+    }
 
     try {
       setUploadingState(prev => ({ ...prev, [keyName]: true }));
 
-      const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
       const profileId = currentUser?.MaNguoiDung || currentUser?.manguoidung;
       if (!profileId) throw new Error('Tài khoản chưa liên kết với hồ sơ DatSan. Vui lòng đăng nhập lại.');
       const filePath = `fields/${profileId}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('san-images')
         .upload(filePath, file);
 
@@ -100,7 +119,10 @@ export default function RegisterField({ user, setUser }) {
         .from('san-images')
         .getPublicUrl(filePath);
 
-      setUrlState(publicUrlData.publicUrl);
+      const finalUrl = uploadData?.publicUrl || publicUrlData?.publicUrl;
+      if (!finalUrl) throw new Error('Không thể lấy URL ảnh sau khi tải lên');
+
+      setUrlState(finalUrl);
 
     } catch (err) {
       console.error('Lỗi tải ảnh:', err);
@@ -357,7 +379,7 @@ export default function RegisterField({ user, setUser }) {
                     <span>{uploadingState.main ? 'Đang tải lên...' : 'Chọn file ảnh từ máy...'}</span>
                     <input 
                       type="file" 
-                      accept="image/*" 
+                      accept="image/jpeg,image/png,image/webp" 
                       onChange={(e) => handleFileUpload(e, 'main', setHinhanhMain)} 
                       className="hidden" 
                     />
@@ -387,7 +409,7 @@ export default function RegisterField({ user, setUser }) {
                     <span>{uploadingState.sub1 ? 'Đang tải...' : 'Tải ảnh 1'}</span>
                     <input 
                       type="file" 
-                      accept="image/*" 
+                      accept="image/jpeg,image/png,image/webp" 
                       onChange={(e) => handleFileUpload(e, 'sub1', setHinhanhSub1)} 
                       className="hidden" 
                     />
@@ -416,7 +438,7 @@ export default function RegisterField({ user, setUser }) {
                     <span>{uploadingState.sub2 ? 'Đang tải...' : 'Tải ảnh 2'}</span>
                     <input 
                       type="file" 
-                      accept="image/*" 
+                      accept="image/jpeg,image/png,image/webp" 
                       onChange={(e) => handleFileUpload(e, 'sub2', setHinhanhSub2)} 
                       className="hidden" 
                     />
@@ -445,7 +467,7 @@ export default function RegisterField({ user, setUser }) {
                     <span>{uploadingState.sub3 ? 'Đang tải...' : 'Tải ảnh 3'}</span>
                     <input 
                       type="file" 
-                      accept="image/*" 
+                      accept="image/jpeg,image/png,image/webp" 
                       onChange={(e) => handleFileUpload(e, 'sub3', setHinhanhSub3)} 
                       className="hidden" 
                     />

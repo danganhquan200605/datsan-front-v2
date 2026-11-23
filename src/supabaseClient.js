@@ -80,7 +80,13 @@ async function apiRequest(path, options = {}) {
   }
 
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'API request failed');
+  if (!response.ok) {
+    const errorMsg = result.message || result.error || 'Yêu cầu không thành công';
+    const err = new Error(errorMsg);
+    err.code = result.code;
+    err.data = result;
+    throw err;
+  }
   return result;
 }
 
@@ -354,21 +360,41 @@ class ApiQuery {
   then(resolve, reject) { return this.execute().then(resolve, reject); }
 }
 
+const uploadedStorageUrls = new Map();
+
 const storage = {
   from(bucket) {
-    let uploadedUrl;
     return {
       async upload(path, file) {
-        const body = new FormData(); body.append('file', file); body.append('path', path);
+        const body = new FormData();
+        body.append('file', file);
+        body.append('path', path);
         const token = sessionStorage.getItem('datsan_access_token');
         const response = await fetch(`${apiUrl}/api/storage/${encodeURIComponent(bucket)}`, {
-          method: 'POST', body,
+          method: 'POST',
+          body,
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        const result = await response.json(); uploadedUrl = result.publicUrl;
-        return response.ok ? { data: result.data, error: null } : { data: null, error: new Error(result.error || 'Upload failed') };
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          return { data: null, error: new Error(result.error || result.message || 'Tải ảnh lên không thành công') };
+        }
+        const publicUrl = result.publicUrl || '';
+        if (publicUrl) {
+          uploadedStorageUrls.set(path, publicUrl);
+          uploadedStorageUrls.set(`${bucket}/${path}`, publicUrl);
+        }
+        return { data: { ...(result.data || {}), publicUrl, path }, error: null };
       },
-      getPublicUrl() { return { data: { publicUrl: uploadedUrl || '' } }; },
+      getPublicUrl(path) {
+        const direct = path ? (uploadedStorageUrls.get(path) || uploadedStorageUrls.get(`${bucket}/${path}`)) : null;
+        if (direct) {
+          return { data: { publicUrl: direct } };
+        }
+        const cleanPath = String(path || '').replace(/^\/+/, '');
+        const fallbackUrl = cleanPath ? `https://ckrmfyuymuvaiymfxvhj.supabase.co/storage/v1/object/public/${bucket}/${cleanPath}` : '';
+        return { data: { publicUrl: fallbackUrl } };
+      },
     };
   },
 };
@@ -496,8 +522,8 @@ export function getMockBookingQrSvg(amount = 0, info = 'DATSAN') {
     <rect x="45" y="220" width="35" height="35" fill="#ffffff" rx="3"/>
     <rect x="52" y="227" width="21" height="21" fill="#0f172a"/>
     <rect x="25" y="105" width="250" height="85" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5" rx="10"/>
-    <text x="150" y="132" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="#15803d" text-anchor="middle">THANH TOÁN THỬ NGHIỆM</text>
-    <text x="150" y="153" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#166534" text-anchor="middle">Giao dịch thử nghiệm – không phát sinh tiền thật</text>
+    <text x="150" y="132" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="#15803d" text-anchor="middle">THANH TOÁN TRỰC TUYẾN</text>
+    <text x="150" y="153" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#166534" text-anchor="middle">Giao dịch mô phỏng – Không dùng tiền thật</text>
     <text x="150" y="174" font-family="system-ui, sans-serif" font-size="10" fill="#475569" text-anchor="middle">Mã đơn: ${info}</text>
     <text x="150" y="245" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#0284c7" text-anchor="middle">DATSAN ONLINE</text>
     <text x="150" y="265" font-family="system-ui, sans-serif" font-size="11" font-weight="bold" fill="#0f172a" text-anchor="middle">${formattedAmount} đ</text>

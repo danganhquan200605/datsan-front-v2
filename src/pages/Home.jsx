@@ -870,37 +870,39 @@ export default function Home({ user, setUser }) {
                 </div>
 
                 {!simulationFailed ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <button
                       disabled={isSubmitting}
                       onClick={() => handleExecuteHomeSimulation('SIMULATE_SUCCESS')}
                       className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                     >
                       <Check className="w-4 h-4" />
-                      {isSubmitting ? 'Đang xử lý giao dịch...' : 'Xác Nhận & Hoàn Tất Thanh Toán'}
+                      {isSubmitting ? 'Đang xử lý giao dịch...' : 'Xác nhận thanh toán'}
                     </button>
 
-                    <p className="text-[11px] text-slate-500 text-center italic mt-1.5 font-medium">
-                      Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.
+                    <p className="text-[11px] text-slate-500 text-center italic mt-1 font-medium">
+                      Giao dịch mô phỏng – không sử dụng tiền thật.
                     </p>
 
-                    {/* Tùy chọn kiểm thử dành cho tester/admin */}
-                    <details className="mt-3 pt-2 border-t border-slate-100 text-slate-400 text-center">
-                      <summary className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer select-none">
-                        🛠️ Tùy chọn kiểm thử (Dành cho Tester & Quản trị viên)
-                      </summary>
-                      <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-left">
-                        <p className="text-[10px] text-slate-500">Tùy chọn kiểm thử trường hợp thanh toán bị gián đoạn hoặc thất bại:</p>
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE')}
-                          className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          Thử nghiệm kịch bản thanh toán thất bại
-                        </button>
-                      </div>
-                    </details>
+                    <div className="flex gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setPendingBookingData(null)}
+                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Đổi phương thức
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentModal(false);
+                          setPendingBookingData(null);
+                        }}
+                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Hủy thanh toán
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3 bg-rose-50/80 border border-rose-200 rounded-2xl p-4">
@@ -919,20 +921,20 @@ export default function Home({ user, setUser }) {
 
                     <button
                       disabled={isSubmitting}
-                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'CANCEL')}
-                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                      Hủy đơn đặt sân và giải phóng khung giờ
-                    </button>
-
-                    <button
-                      disabled={isSubmitting}
                       onClick={() => setSimulationFailed(false)}
                       className="w-full py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       Thử thanh toán lại
+                    </button>
+
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => handleExecuteHomeSimulation('SIMULATE_FAILURE', 'CANCEL')}
+                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                      Hủy đơn đặt sân và giải phóng khung giờ
                     </button>
                   </div>
                 )}

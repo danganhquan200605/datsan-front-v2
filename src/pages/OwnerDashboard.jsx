@@ -121,6 +121,7 @@ export default function OwnerDashboard({ user, setUser }) {
   const [depositPaymentReq, setDepositPaymentReq] = useState(null);
   const [depositTxRef, setDepositTxRef] = useState('');
   const [isSubmittingDepositProof, setIsSubmittingDepositProof] = useState(false);
+  const [isCreatingDepositReq, setIsCreatingDepositReq] = useState(false);
 
   // States Hoàn tiền cho khách hủy (FEATURE 02)
   const [refundsList, setRefundsList] = useState([]);
@@ -221,17 +222,42 @@ export default function OwnerDashboard({ user, setUser }) {
     }
   }, [currentUser, isOwner]);
 
-  // Bắt đầu quy trình nộp ký quỹ mô phỏng DEMO
+  // TASK 05: Tự động làm mới toàn diện dữ liệu khi bấm nút Quản lý sân từ Header
+  useEffect(() => {
+    const handleOwnerRefresh = () => {
+      if (currentUser && isOwner) {
+        fetchOwnerData();
+        fetchOwnerDepositData();
+        fetchOwnerRefundsData();
+      }
+    };
+    window.addEventListener('owner:refresh-data', handleOwnerRefresh);
+    return () => window.removeEventListener('owner:refresh-data', handleOwnerRefresh);
+  }, [currentUser, isOwner]);
+
+  // TASK 01: Bắt đầu quy trình nộp ký quỹ bảo đảm
   const handleStartDepositPayment = async () => {
+    if (isCreatingDepositReq) return;
     try {
+      setIsCreatingDepositReq(true);
       const res = await requestOwnerDeposit();
-      if (res?.paymentDetails) {
-        setDepositPaymentReq(res.paymentDetails);
+      const details = res?.data || res?.paymentDetails;
+      if (details) {
+        setDepositPaymentReq(details);
         setDepositTxRef('');
         setShowDepositModal(true);
+      } else {
+        alert(res?.message || 'Không thể tạo yêu cầu nộp ký quỹ.');
       }
     } catch (err) {
-      alert('Lỗi tạo yêu cầu thanh toán ký quỹ: ' + err.message);
+      if (err.code === 'ALREADY_DEPOSITED' || err.message?.includes('đã hoàn tất')) {
+        alert(err.message || 'Tài khoản của bạn đã hoàn tất ký quỹ 1.000.000đ.');
+        fetchOwnerDepositData();
+      } else {
+        alert('Lỗi tạo yêu cầu thanh toán ký quỹ: ' + (err.message || 'Vui lòng thử lại'));
+      }
+    } finally {
+      setIsCreatingDepositReq(false);
     }
   };
 
@@ -259,7 +285,7 @@ export default function OwnerDashboard({ user, setUser }) {
     }
   };
 
-  // Thanh toán mô phỏng ký quỹ qua Mock Payment Gateway (DEMO)
+  // Thanh toán ký quỹ (xử lý mô phỏng an toàn)
   const handleSimulateDepositPayment = async (simulationAction = 'SIMULATE_SUCCESS') => {
     if (!depositPaymentReq) return;
     const txId = depositPaymentReq.transaction?.magiaodich || depositPaymentReq.transaction?.id;
@@ -275,21 +301,21 @@ export default function OwnerDashboard({ user, setUser }) {
         simulationAction
       });
       if (res?.success) {
-        alert('🎉 ' + res.message);
+        alert('🎉 ' + (res.message || 'Nộp khoản bảo đảm 1.000.000đ thành công!'));
         setShowDepositModal(false);
         fetchOwnerDepositData();
       } else {
-        alert('⚠️ ' + (res?.message || 'Mô phỏng thanh toán thất bại'));
+        alert('⚠️ ' + (res?.message || 'Thao tác nộp ký quỹ chưa hoàn tất'));
         fetchOwnerDepositData();
       }
     } catch (err) {
-      alert('Lỗi thanh toán mô phỏng: ' + err.message);
+      alert('Lỗi thanh toán ký quỹ: ' + err.message);
     } finally {
       setIsSubmittingDepositProof(false);
     }
   };
 
-  // Hoàn tiền mô phỏng qua Mock Payment Gateway (DEMO)
+  // Hoàn tiền cho khách hủy (xử lý mô phỏng an toàn)
   const handleSimulateRefundPayment = async (refundId) => {
     try {
       setIsSubmittingRefundSent(true);
@@ -299,14 +325,14 @@ export default function OwnerDashboard({ user, setUser }) {
         simulationAction: 'SIMULATE_SUCCESS'
       });
       if (res?.success) {
-        alert('🎉 ' + res.message);
+        alert('🎉 ' + (res.message || 'Đã hoàn tất chuyển tiền hoàn trả cho khách hàng!'));
         setSelectedRefundForAction(null);
         fetchOwnerRefundsData();
       } else {
-        alert('Lỗi: ' + (res?.message || 'Mô phỏng hoàn tiền thất bại'));
+        alert('Lỗi: ' + (res?.message || 'Không thể xử lý hoàn tiền'));
       }
     } catch (err) {
-      alert('Lỗi: ' + err.message);
+      alert('Lỗi hoàn tiền: ' + err.message);
     } finally {
       setIsSubmittingRefundSent(false);
     }
@@ -553,44 +579,54 @@ export default function OwnerDashboard({ user, setUser }) {
         </div>
 
         {/* FEATURE 01: BANNER KHOẢN BẢO ĐẢM KÝ QUỸ (1.000.000 VND) */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-start gap-3.5">
-            <div className={`p-3 rounded-xl shadow-md shrink-0 ${
-              depositData?.trangthai === 'HOP_LE' ? 'bg-emerald-600 text-white' :
-              depositData?.trangthai === 'CHO_XAC_MINH' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
+        {(() => {
+          const isDepositActive = depositData?.trangthai === 'DA_KY_QUY' || depositData?.trangthai === 'HOP_LE';
+          const isDepositPending = depositData?.trangthai === 'CHO_XAC_MINH';
+          return (
+            <div className={`rounded-2xl border p-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm ${
+              isDepositActive ? 'bg-emerald-50/50 border-emerald-200' :
+              isDepositPending ? 'bg-amber-50/50 border-amber-200' : 'bg-white border-slate-200'
             }`}>
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="font-black text-slate-900 text-base flex items-center gap-2">
-                Khoản Bảo Đảm Trách Nhiệm Chủ Sân (Ký Quỹ)
-                <span className={`px-2.5 py-0.5 text-white text-[10px] font-black rounded-full uppercase tracking-wider ${
-                  depositData?.trangthai === 'HOP_LE' ? 'bg-emerald-600' :
-                  depositData?.trangthai === 'CHO_XAC_MINH' ? 'bg-amber-600' : 'bg-rose-600'
+              <div className="flex items-start gap-3.5">
+                <div className={`p-3 rounded-xl shadow-md shrink-0 ${
+                  isDepositActive ? 'bg-emerald-600 text-white' :
+                  isDepositPending ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
                 }`}>
-                  {depositData?.trangthai === 'HOP_LE' ? (depositData.is_legacy ? 'ĐÃ KÝ QUỸ (CHỦ SÂN HIỆN HỮU)' : 'ĐÃ KÝ QUỸ 1.000.000đ') :
-                   depositData?.trangthai === 'CHO_XAC_MINH' ? 'CHỜ ADMIN XÁC MINH' : 'CHƯA NỘP BẢO ĐẢM'}
-                </span>
-              </h4>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                {depositData?.trangthai === 'HOP_LE'
-                  ? `Số dư quỹ bảo đảm hiện tại: ${Number(depositData.sodu_hientai || 1000000).toLocaleString('vi-VN')} đ. Khoản bảo đảm có hoàn lại khi ngừng kinh doanh.`
-                  : depositData?.trangthai === 'CHO_XAC_MINH'
-                  ? 'Bạn đã gửi thông tin nộp ký quỹ. Admin đang đối soát giao dịch để kích hoạt.'
-                  : 'Quy định sàn: Chủ sân cần nộp khoản bảo đảm 1.000.000đ có hoàn lại để sân mới được nhận đặt lịch và phê duyệt hoạt động.'
-                }
-              </p>
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-900 text-base flex items-center gap-2">
+                    Khoản Bảo Đảm Trách Nhiệm Chủ Sân (Ký Quỹ)
+                    <span className={`px-2.5 py-0.5 text-white text-[10px] font-black rounded-full uppercase tracking-wider ${
+                      isDepositActive ? 'bg-emerald-600' :
+                      isDepositPending ? 'bg-amber-600' : 'bg-rose-600'
+                    }`}>
+                      {isDepositActive ? (depositData.is_legacy ? 'ĐÃ KÝ QUỸ (CHỦ SÂN HIỆN HỮU)' : 'ĐÃ KÝ QUỸ 1.000.000đ') :
+                       isDepositPending ? 'CHỜ ADMIN XÁC MINH' : 'CHƯA NỘP BẢO ĐẢM'}
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    {isDepositActive
+                      ? `Số dư quỹ bảo đảm hiện tại: ${Number(depositData.sodu_hientai || 1000000).toLocaleString('vi-VN')} đ. Khoản bảo đảm có hoàn lại khi ngừng kinh doanh.`
+                      : isDepositPending
+                      ? 'Bạn đã gửi thông tin nộp ký quỹ. Admin đang đối soát giao dịch để kích hoạt.'
+                      : 'Quy định sàn: Chủ sân cần nộp khoản bảo đảm 1.000.000đ có hoàn lại để sân mới được nhận đặt lịch và phê duyệt hoạt động.'
+                    }
+                  </p>
+                </div>
+              </div>
+              {!isDepositActive && !isDepositPending && (
+                <button
+                  disabled={isCreatingDepositReq}
+                  onClick={handleStartDepositPayment}
+                  className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
+                >
+                  <QrCode className="w-4 h-4" /> {isCreatingDepositReq ? 'Đang tạo yêu cầu...' : 'Nộp khoản bảo đảm 1.000.000đ'}
+                </button>
+              )}
             </div>
-          </div>
-          {depositData?.trangthai !== 'HOP_LE' && depositData?.trangthai !== 'CHO_XAC_MINH' && (
-            <button
-              onClick={handleStartDepositPayment}
-              className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition whitespace-nowrap active:scale-95"
-            >
-              <QrCode className="w-4 h-4" /> Nộp khoản bảo đảm 1.000.000đ
-            </button>
-          )}
-        </div>
+          );
+        })()}
 
         {/* SỔ NỢ HOA HỒNG BANNER CẦN NỘP ADMIN */}
         {totalPendingCommission > 0 && (
@@ -1131,7 +1167,7 @@ export default function OwnerDashboard({ user, setUser }) {
                                     }}
                                     className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
                                   >
-                                    Báo đã chuyển khoản
+                                    Hoàn tiền
                                   </button>
                                 )}
                                 {rf.trangthai === 'DA_CHUYEN' && (
@@ -1248,10 +1284,10 @@ export default function OwnerDashboard({ user, setUser }) {
                 </p>
               </div>
 
-              {/* THÔNG BÁO TÀI CHÍNH THỬ NGHIỆM */}
+              {/* THÔNG BÁO TÀI CHÍNH */}
               <div className="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                <div className="text-xs font-bold text-slate-800">Cổng Thanh Toán Ký Quỹ</div>
-                <div className="text-[10px] text-slate-600 font-medium">Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.</div>
+                <div className="text-xs font-bold text-slate-800">Khoản Bảo Đảm Trách Nhiệm</div>
+                <div className="text-[10px] text-slate-600 font-medium">Giao dịch mô phỏng – không sử dụng tiền thật.</div>
               </div>
 
               <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 text-center mb-4">
@@ -1279,24 +1315,17 @@ export default function OwnerDashboard({ user, setUser }) {
                 <button
                   disabled={isSubmittingDepositProof}
                   onClick={() => handleSimulateDepositPayment('SIMULATE_SUCCESS')}
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  {isSubmittingDepositProof ? 'Đang xử lý...' : 'Xác nhận hoàn tất nộp ký quỹ'}
-                </button>
-                <button
-                  disabled={isSubmittingDepositProof}
-                  onClick={() => handleSimulateDepositPayment('SIMULATE_PENDING')}
-                  className="w-full py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] transition cursor-pointer"
-                >
-                  Gửi yêu cầu chờ đối soát thủ công
+                  {isSubmittingDepositProof ? 'Đang xử lý...' : 'Xác nhận nộp ký quỹ'}
                 </button>
               </div>
 
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowDepositModal(false)}
-                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
                 >
                   Đóng Cửa Sổ
                 </button>
@@ -1305,7 +1334,7 @@ export default function OwnerDashboard({ user, setUser }) {
           </div>
         )}
 
-        {/* FEATURE 02: MODAL BÁO ĐÃ HOÀN TIỀN CHO KHÁCH HỦY */}
+        {/* FEATURE 02: MODAL XÁC NHẬN HOÀN TIỀN CHO KHÁCH HỦY */}
         {selectedRefundForAction && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -1317,89 +1346,86 @@ export default function OwnerDashboard({ user, setUser }) {
               </button>
 
               <div className="text-center mb-4">
-                <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-                  Chuyển Tiền Hoàn Trả Khách
+                <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                  Xử Lý Hoàn Tiền Khách Hủy
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận Đã Chuyển Khoản Hoàn Tiền</h3>
+                <h3 className="text-lg font-black text-slate-900 mt-2">Xác Nhận Hoàn Tiền</h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Đơn đặt sân #{selectedRefundForAction.madatsan} • Hoàn 100%
+                  Đơn đặt sân #{selectedRefundForAction.madatsan} • Hoàn 100% theo chính sách
                 </p>
               </div>
 
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4 text-xs space-y-1.5">
-                <div className="font-extrabold text-slate-800 uppercase text-[11px] mb-2 flex items-center gap-1">
-                  <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Thông tin tài khoản thụ hưởng của Khách
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4 text-xs space-y-2">
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Mã đơn đặt sân:</span>
+                  <strong className="text-slate-900 font-mono">#{selectedRefundForAction.madatsan}</strong>
                 </div>
-                <div>Ngân hàng: <strong className="text-slate-900">{selectedRefundForAction.nganhang_nhan || 'MB Bank'}</strong></div>
-                <div>Số tài khoản: <strong className="text-slate-900 font-mono text-sm">{selectedRefundForAction.sotaikhoan_nhan || '—'}</strong></div>
-                <div>Chủ tài khoản: <strong className="text-slate-900 uppercase">{selectedRefundForAction.chutaikhoan_nhan || selectedRefundForAction.tentaikhoan_nhan || '—'}</strong></div>
-                <div className="pt-2 border-t border-slate-200 text-sm">
-                  Số tiền cần hoàn: <strong className="text-rose-600 font-black">
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Mã yêu cầu hoàn tiền:</span>
+                  <strong className="text-slate-900 font-mono">#{selectedRefundForAction.mahoantien || selectedRefundForAction.id}</strong>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Khách hàng nhận:</span>
+                  <strong className="text-slate-900">{selectedRefundForAction.chutaikhoan_nhan || selectedRefundForAction.tentaikhoan_nhan || 'Khách hàng'}</strong>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Ngân hàng nhận:</span>
+                  <strong className="text-slate-900">{selectedRefundForAction.nganhang_nhan || 'MB Bank'}</strong>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Số tài khoản:</span>
+                  <strong className="text-slate-900 font-mono">{selectedRefundForAction.sotaikhoan_nhan || '—'}</strong>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Chủ tài khoản:</span>
+                  <strong className="text-slate-900 uppercase">{selectedRefundForAction.chutaikhoan_nhan || selectedRefundForAction.tentaikhoan_nhan || '—'}</strong>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Lý do hoàn tiền:</span>
+                  <span className="text-slate-800 font-medium text-right">{selectedRefundForAction.lydo || 'Khách tự hủy hợp lệ trước giờ đấu'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Trạng thái hiện tại:</span>
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
+                    {selectedRefundForAction.trangthai === 'CHO_HOAN' ? 'Chờ hoàn tiền' : selectedRefundForAction.trangthai}
+                  </span>
+                </div>
+                <div className="flex justify-between pt-2 text-sm items-baseline">
+                  <span className="font-bold text-slate-700">Số tiền cần hoàn:</span>
+                  <strong className="text-rose-600 font-black text-base">
                     {formatMoneySafe(selectedRefundForAction.sotien_canhoan ?? selectedRefundForAction.sotien_hoan)}
                   </strong>
                 </div>
               </div>
 
-              <div className="space-y-3 mb-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Mã giao dịch đối soát (Transaction ID)</label>
-                  <input
-                    type="text"
-                    placeholder="TXN_REFUND_123456"
-                    value={refundTxIdInput}
-                    onChange={(e) => setRefundTxIdInput(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-500"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Hệ thống tự động sinh mã đối soát nếu để trống</span>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Ghi chú đối soát (tùy chọn)</label>
-                  <input
-                    type="text"
-                    placeholder="Ghi chú hoàn tiền"
-                    value={refundProofUrlInput}
-                    onChange={(e) => setRefundProofUrlInput(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 text-xs text-slate-700 flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-bold text-slate-800">Xử lý hoàn tiền trực tuyến</div>
-                  <div className="text-[11px] text-slate-600 mt-0.5">
-                    Giao dịch thử nghiệm – không phát sinh chuyển tiền thật. Bạn có thể nhấn <strong>Xác nhận hoàn tiền</strong> để hệ thống tự động sinh mã đối soát và hoàn tất quy trình.
-                  </div>
+                <div className="text-[11px] text-slate-600 leading-relaxed">
+                  Giao dịch mô phỏng – không sử dụng tiền thật. Nhấn <strong>Xác nhận hoàn tiền</strong> để hệ thống cập nhật đối soát và thông báo cho khách hàng.
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRefundForAction(null)}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Hủy
+                </button>
                 <button
                   disabled={isSubmittingRefundSent}
-                  onClick={() => handleSimulateRefundPayment(selectedRefundForAction.mahoantien || selectedRefundForAction.id)}
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                  onClick={() => {
+                    const refundAmt = formatMoneySafe(selectedRefundForAction.sotien_canhoan ?? selectedRefundForAction.sotien_hoan);
+                    if (window.confirm(`Xác nhận hoàn tiền ${refundAmt} cho khách hàng?`)) {
+                      handleSimulateRefundPayment(selectedRefundForAction.mahoantien || selectedRefundForAction.id);
+                    }
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  {isSubmittingRefundSent ? 'Đang xử lý...' : 'Xác nhận hoàn tiền cho khách'}
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isSubmittingRefundSent ? 'Đang xử lý...' : 'Xác nhận hoàn tiền'}
                 </button>
-
-                <div className="flex gap-3 mt-1">
-                  <button
-                    onClick={() => setSelectedRefundForAction(null)}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
-                  >
-                    Đóng
-                  </button>
-                  <button
-                    disabled={isSubmittingRefundSent}
-                    onClick={handleConfirmRefundSent}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    {isSubmittingRefundSent ? 'Đang gửi...' : 'Nhập mã thủ công'}
-                  </button>
-                </div>
               </div>
             </div>
           </div>

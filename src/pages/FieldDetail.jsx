@@ -223,6 +223,19 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
           const vt = vtData?.find((v) => Number(v.mavitri || v.MaViTri) === Number(sanData.mavitri || sanData.MaViTri)) || {};
           const ls = lsData?.find((l) => Number(l.maloaisan || l.MaLoaiSan) === Number(sanData.maloaisan || sanData.MaLoaiSan)) || {};
           
+          let parsedSubImages = [];
+          if (Array.isArray(sanData.hinhanh_phu)) {
+            parsedSubImages = sanData.hinhanh_phu.filter(Boolean);
+          } else if (typeof sanData.hinhanh_phu === 'string' && sanData.hinhanh_phu.trim()) {
+            try {
+              const parsed = JSON.parse(sanData.hinhanh_phu);
+              if (Array.isArray(parsed)) parsedSubImages = parsed.filter(Boolean);
+              else if (typeof parsed === 'string') parsedSubImages = [parsed];
+            } catch {
+              parsedSubImages = sanData.hinhanh_phu.split(',').map(s => s.trim()).filter(Boolean);
+            }
+          }
+
           setSanInfo({
             MaSan: sanData.masan || sanData.MaSan,
             TenSan: sanData.tensan || sanData.TenSan,
@@ -237,7 +250,8 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
             },
             Rating: 4.9,
             TotalReviews: 148,
-            Image: sanData.hinhanh || sanData.HinhAnh || 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=1200&q=80'
+            Image: sanData.hinhanh || sanData.HinhAnh || 'https://images.unsplash.com/photo-1529900248057-5e632c63c574?auto=format&fit=crop&w=1200&q=80',
+            subImages: parsedSubImages
           });
         } else {
           setPageError('Không tìm thấy sân này. Vui lòng quay lại danh sách sân.');
@@ -677,13 +691,25 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
               </div>
               <div className="grid grid-rows-3 gap-2 h-[380px]">
                 <div className="rounded-xl overflow-hidden bg-slate-100 relative">
-                  <img src="https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=400&q=80" alt="Sub 1" className="w-full h-full object-cover" />
+                  <img 
+                    src={sanInfo?.subImages?.[0] || "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=400&q=80"} 
+                    alt="Sub 1" 
+                    className="w-full h-full object-cover" 
+                  />
                 </div>
                 <div className="rounded-xl overflow-hidden bg-slate-100 relative">
-                  <img src="https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=400&q=80" alt="Sub 2" className="w-full h-full object-cover" />
+                  <img 
+                    src={sanInfo?.subImages?.[1] || "https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=400&q=80"} 
+                    alt="Sub 2" 
+                    className="w-full h-full object-cover" 
+                  />
                 </div>
                 <div className="rounded-xl overflow-hidden bg-slate-100 relative">
-                  <img src="https://images.unsplash.com/photo-1626248801379-51a0748a5f96?auto=format&fit=crop&w=400&q=80" alt="Sub 3" className="w-full h-full object-cover" />
+                  <img 
+                    src={sanInfo?.subImages?.[2] || "https://images.unsplash.com/photo-1626248801379-51a0748a5f96?auto=format&fit=crop&w=400&q=80"} 
+                    alt="Sub 3" 
+                    className="w-full h-full object-cover" 
+                  />
                 </div>
               </div>
             </div>
@@ -1123,20 +1149,48 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
             </button>
 
             {pendingBookingData ? (
-              /* BƯỚC 2: CỔNG THANH TOÁN (TASK 04 & 05: GIAO DIỆN THƯƠNG MẠI CHUYÊN NGHIỆP) */
+              /* BƯỚC 2: CỔNG THANH TOÁN CHUYÊN NGHIỆP */
               <div>
                 <div className="text-center mb-4">
                   <span className="px-3 py-1 bg-emerald-50 text-emerald-800 text-[11px] font-bold rounded-full uppercase tracking-wider border border-emerald-200">
-                    Cổng Thanh Toán
+                    Cổng Thanh Toán Trực Tuyến
                   </span>
-                  <h3 className="text-xl font-black text-slate-900 mt-2">Quét Mã QR Thanh Toán</h3>
+                  <h3 className="text-xl font-black text-slate-900 mt-2">Xác Nhận Thanh Toán</h3>
                   <p className="text-xs text-slate-500 mt-1">
                     Đơn đặt sân #{pendingBookingData.bookingId} • {pendingBookingData.sanName}
                   </p>
                 </div>
 
+                {/* THÔNG TIN GIAO DỊCH TIÊU CHUẨN */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-4 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Mã đơn đặt sân:</span>
+                    <strong className="text-slate-900 font-mono">#{pendingBookingData.bookingId}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Tên sân:</span>
+                    <strong className="text-slate-900">{pendingBookingData.sanName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Ngày đặt:</span>
+                    <strong className="text-slate-900">{selectedDate}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Phương thức thanh toán:</span>
+                    <span className="font-bold text-emerald-700">Quét mã QR</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Trạng thái giao dịch:</span>
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">Chờ thanh toán</span>
+                  </div>
+                  <div className="flex justify-between pt-1.5 border-t border-slate-200 text-sm items-baseline">
+                    <span className="font-bold text-slate-700">Tổng tiền:</span>
+                    <strong className="text-emerald-700 font-black text-base">{Number(pendingBookingData.total).toLocaleString('vi-VN')} đ</strong>
+                  </div>
+                </div>
+
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center mb-4">
-                  <div className="text-xs font-bold text-slate-700 mb-2">Mã QR Thanh Toán</div>
+                  <div className="text-xs font-bold text-slate-700 mb-2">Quét mã QR để thanh toán</div>
                   <div className="bg-white p-3 rounded-xl border border-slate-200 inline-block shadow-sm">
                     <img 
                       src={getMockBookingQrSvg(pendingBookingData.total, `DON-${pendingBookingData.bookingId}`)} 
@@ -1144,43 +1198,42 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
                       className="w-44 h-44 mx-auto object-contain"
                     />
                   </div>
-                  <div className="mt-2 text-xs text-slate-600">
-                    Số tiền thanh toán: <strong className="text-slate-900 font-black text-lg">{Number(pendingBookingData.total).toLocaleString('vi-VN')} đ</strong>
-                  </div>
                 </div>
 
                 {!simulationFailed ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <button
                       disabled={isSubmitting}
                       onClick={() => handleExecuteBookingSimulation('SIMULATE_SUCCESS')}
                       className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      {isSubmitting ? 'Đang xử lý giao dịch...' : 'Xác Nhận & Hoàn Tất Thanh Toán'}
+                      {isSubmitting ? 'Đang xử lý giao dịch...' : 'Xác nhận thanh toán'}
                     </button>
 
-                    <p className="text-[11px] text-slate-500 text-center italic mt-1.5 font-medium">
-                      Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.
+                    <p className="text-[11px] text-slate-500 text-center italic mt-1 font-medium">
+                      Giao dịch mô phỏng – không sử dụng tiền thật.
                     </p>
 
-                    {/* Tùy chọn kiểm thử dành cho tester/admin */}
-                    <details className="mt-3 pt-2 border-t border-slate-100 text-slate-400 text-center">
-                      <summary className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer select-none">
-                        🛠️ Tùy chọn kiểm thử (Dành cho Tester & Quản trị viên)
-                      </summary>
-                      <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-left">
-                        <p className="text-[10px] text-slate-500">Mô phỏng trường hợp thanh toán bị gián đoạn hoặc thất bại từ ngân hàng:</p>
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE')}
-                          className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          Thử nghiệm kịch bản thanh toán thất bại
-                        </button>
-                      </div>
-                    </details>
+                    <div className="flex gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setPendingBookingData(null)}
+                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Đổi phương thức
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentModal(false);
+                          setPendingBookingData(null);
+                        }}
+                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Hủy thanh toán
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3 bg-rose-50/80 border border-rose-200 rounded-2xl p-4">
@@ -1205,20 +1258,20 @@ export default function FieldDetail({ sanId: propSanId, onBack, user, setUser })
 
                     <button
                       disabled={isSubmitting}
-                      onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE', 'CANCEL')}
-                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                      Hủy đơn đặt sân và giải phóng khung giờ
-                    </button>
-
-                    <button
-                      disabled={isSubmitting}
                       onClick={() => setSimulationFailed(false)}
                       className="w-full py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       Thử thanh toán lại
+                    </button>
+
+                    <button
+                      disabled={isSubmitting}
+                      onClick={() => handleExecuteBookingSimulation('SIMULATE_FAILURE', 'CANCEL')}
+                      className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                      Hủy đơn đặt sân và giải phóng khung giờ
                     </button>
                   </div>
                 )}

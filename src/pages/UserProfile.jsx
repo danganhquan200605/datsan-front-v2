@@ -878,7 +878,7 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                           💰 Số tiền hoàn trả 100%: <span className="text-sm font-black text-emerald-600">{Number(cancelCheckResult.refundAmount).toLocaleString('vi-VN')} đ</span>. Chủ sân sẽ chuyển hoàn theo thông tin tài khoản ngân hàng của bạn.
                         </p>
                         <div className="text-[10px] text-slate-600 bg-slate-100 p-2 rounded-lg border border-slate-200 font-medium mt-1">
-                          ℹ️ Giao dịch thử nghiệm – không phát sinh chuyển tiền thật.
+                          ℹ️ Giao dịch mô phỏng – không sử dụng tiền thật.
                         </div>
                       </>
                     ) : (
@@ -911,7 +911,7 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                     </div>
 
                     <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-700">
-                      ℹ️ Giao dịch thử nghiệm – không phát sinh chuyển tiền thật. Vui lòng chọn ngân hàng và số tài khoản để nhận chuyển khoản hoàn tất đối soát.
+                      ℹ️ Giao dịch mô phỏng – không sử dụng tiền thật. Vui lòng chọn ngân hàng và số tài khoản để nhận chuyển khoản hoàn tiền.
                     </div>
 
                     <div className="grid grid-cols-1 gap-2.5 text-xs">
@@ -1147,7 +1147,7 @@ export default function UserProfile({ user: propUser, setUser: propSetUser }) {
                     </div>
 
                     <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-700">
-                      ℹ️ Giao dịch thử nghiệm – không phát sinh chuyển tiền thật. Chủ sân sẽ đối soát và thực hiện hoàn tiền theo tài khoản này.
+                      ℹ️ Giao dịch mô phỏng – không sử dụng tiền thật. Chủ sân sẽ đối soát và thực hiện hoàn tiền theo tài khoản này.
                     </div>
 
                     <div className="grid grid-cols-1 gap-2.5 text-xs">
